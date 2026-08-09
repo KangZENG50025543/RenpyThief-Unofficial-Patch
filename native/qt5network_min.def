@@ -1,0 +1,8 @@
+LIBRARY Qt5Network.dll
+EXPORTS
+    ??0QNetworkRequest@@QAE@ABV0@@Z
+    ??1QNetworkRequest@@QAE@XZ
+    ?setAttribute@QNetworkReply@@IAEXW4Attribute@QNetworkRequest@@ABVQVariant@@@Z
+    ?setUrl@QNetworkReply@@IAEXABVQUrl@@@Z
+    ?setUrl@QNetworkRequest@@QAEXABVQUrl@@@Z
+    ?url@QNetworkRequest@@QBE?AVQUrl@@XZ

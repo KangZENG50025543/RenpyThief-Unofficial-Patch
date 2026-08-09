@@ -1,0 +1,22 @@
+* text=auto
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.editorconfig text eol=lf
+LICENSE text eol=lf
+COPYRIGHT text eol=lf
+*.yml text eol=lf
+*.py text eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.ini text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.cpp text eol=lf
+*.h text eol=lf
+*.def text eol=crlf
+
+*.dll binary
+*.exe binary
+*.zip binary

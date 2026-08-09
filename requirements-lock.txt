@@ -1,0 +1,17 @@
+# Windows x64 release-build environment, generated with Python 3.12.7.
+# Regenerate and review this file deliberately when updating dependencies.
+altgraph==0.17.5
+jaraco.classes==3.4.0
+jaraco.context==6.1.2
+jaraco.functools==4.6.0
+keyring==25.7.0
+more-itertools==11.1.0
+packaging==26.3
+pefile==2024.8.26
+pyinstaller==6.22.0
+pyinstaller-hooks-contrib==2026.6
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+PyQt5_sip==12.19.0
+pywin32-ctypes==0.2.3
+setuptools==84.0.0

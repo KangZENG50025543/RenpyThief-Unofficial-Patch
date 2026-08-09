@@ -1,0 +1,4 @@
+PyQt5>=5.15,<6
+keyring>=25,<26
+pyinstaller>=6,<7
+

@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv*/
+venv/
+
+# Build products
+build/
+dist/
+release/
+native/build/
+*.obj
+*.lib
+*.exp
+*.pdb
+*.dll
+*.exe
+
+# Locally staged native runtime files. They are built from native/ and are
+# distributed as GitHub Release assets, not committed to the source tree.
+router/_internal/
+router/*.log
+
+# Secrets and local configuration
+.env
+.env.*
+API*.txt
+*api*key*.txt
+*_api.txt
+api_*.txt
+*token*.txt
+secret*.txt
+credentials*.json
+settings.json
+*.pem
+*.key
+
+# Runtime logs and user data
+*.log
+user
+hwid
+userdata/
+_analysis/
+*.pcap
+*.pcapng
+*.har
+*.dmp
+*.etl
+
+# IDE / OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Internal reverse-engineering notes are intentionally not part of the public
+# repository. The public design contract is UPDATE_GUARD_CONTRACT.md.
+FLOW_AND_INDEPENDENCE.md

@@ -1,0 +1,117 @@
+name: Bug 报告
+description: 报告可复现的补丁故障、兼容性问题或异常行为
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索现有 Issue，并删除日志中的 API Key、Cookie、账号信息、游戏正文和本机隐私。
+
+        请勿上传 RenpyThief 原版程序、游戏文件、注入器、内部分析资料或未经检查的完整日志。安全漏洞请按 `SECURITY.md` 私下报告。
+
+  - type: input
+    id: patch-version
+    attributes:
+      label: 补丁版本
+      description: 例如 v0.1.0；若从源码运行，请填写提交哈希。
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows 版本
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+
+  - type: input
+    id: renpythief-version
+    attributes:
+      label: RenpyThief 版本与架构
+      description: 只填写版本号和 x86/x64；不要上传程序文件。
+      placeholder: 6.7.8 x86
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 翻译线路
+      options:
+        - 官方免费额度
+        - 我的 API
+        - 两种线路都会发生
+        - 与翻译线路无关
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider 与模型
+      description: 使用“我的 API”时填写；不要填写 API Key。
+      placeholder: DeepSeek / deepseek-v4-flash
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 故障阶段
+      options:
+        - 打开补丁 GUI
+        - 测试 API
+        - 启动 RenpyThief
+        - 更新保护
+        - 等待路由就绪
+        - 拖入或启动游戏
+        - 翻译请求或响应
+        - 关闭或清理进程
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请写出最短、稳定的复现流程。
+      placeholder: |
+        1. 打开补丁……
+        2. 选择……
+        3. 点击……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已脱敏的诊断信息
+      description: 仅粘贴与问题有关的小段日志或错误文本；请先人工检查并脱敏。
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，未找到相同问题。
+          required: true
+        - label: 我已确认内容不含密钥、Cookie、账号、游戏正文或其他隐私。
+          required: true
+        - label: 我没有上传原版 RenpyThief、游戏文件、注入器或分析目录。
+          required: true

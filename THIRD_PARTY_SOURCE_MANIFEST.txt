@@ -1,0 +1,10 @@
+# Third-party source archives for the v0.1.0 Windows release.
+#
+# This file is parsed by scripts/prepare_release_sources.ps1. Keep the header
+# and pipe-delimited field order unchanged. A missing or non-SHA256 digest makes
+# the script stop before downloading anything.
+component|version|filename|url|sha256|size_bytes|hash_authority|hash_evidence
+PyQt5|5.15.11|PyQt5-5.15.11.tar.gz|https://files.pythonhosted.org/packages/0e/07/c9ed0bd428df6f87183fca565a79fee19fa7c88c7f00a7f011ab4379e77a/PyQt5-5.15.11.tar.gz|fda45743ebb4a27b4b1a51c6d8ef455c4c1b5d610c90d2934c7802b5c1557c52|3216775|upstream|PyPI JSON API https://pypi.org/pypi/PyQt5/5.15.11/json
+Qt|5.15.2|qt-everywhere-src-5.15.2.tar.xz|https://download.qt.io/archive/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.tar.xz|3a530d1b243b5dec00bc54937455471aaa3e56849d2593edb8ded07228202240|586690220|upstream|Qt MirrorBrain file details https://download.qt.io/archive/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.tar.xz.mirrorlist
+MinHook|1.3.4|MinHook-1.3.4-c3fcafdc10146beb5919319d0683e44e3c30d537.zip|https://codeload.github.com/TsudaKageyu/minhook/zip/c3fcafdc10146beb5919319d0683e44e3c30d537|cdcb160f734d81bd4d235dfea79e3f5a661c8ef0ab74fa814272aa5449069034|79584|independent_pinned|Tag v1.3.4 resolved to commit c3fcafdc10146beb5919319d0683e44e3c30d537; digest matched two HTTPS downloads on 2026-08-09; upstream publishes no digest
+Python|3.12.7|Python-3.12.7.tar.xz|https://www.python.org/ftp/python/3.12.7/Python-3.12.7.tar.xz|24887b92e2afd4a2ac602419ad4b596372f67ac9b077190f459aba390faf5550|20444032|upstream|Python.org Sigstore bundle https://www.python.org/ftp/python/3.12.7/Python-3.12.7.tar.xz.sigstore

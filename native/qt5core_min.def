@@ -1,0 +1,11 @@
+LIBRARY Qt5Core.dll
+EXPORTS
+    ??0QByteArray@@QAE@PBDH@Z
+    ??0QUrl@@QAE@ABV0@@Z
+    ??1QByteArray@@QAE@XZ
+    ??1QUrl@@QAE@XZ
+    ??0QVariant@@QAE@H@Z
+    ??1QVariant@@QAE@XZ
+    ?fromEncoded@QUrl@@SA?AV1@ABVQByteArray@@W4ParsingMode@1@@Z
+    ?constData@QByteArray@@QBEPBDXZ
+    ?toEncoded@QUrl@@QBE?AVQByteArray@@V?$QUrlTwoFlags@W4UrlFormattingOption@QUrl@@W4ComponentFormattingOption@2@@@@Z
