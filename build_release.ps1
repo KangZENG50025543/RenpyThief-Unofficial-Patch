@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.1.1',
     [string]$Python = '',
+    [string]$IsccPath = '',
     [switch]$PublicRelease
 )
 
@@ -14,11 +15,17 @@ $sourceRouter = Join-Path $projectRoot 'router'
 $workRoot = Join-Path $projectRoot 'build'
 $distRoot = Join-Path $projectRoot 'dist'
 $releaseParent = Join-Path $projectRoot 'release'
-$releaseName = "RenpyThiefPatch-v$Version-windows-x64"
+$releaseName = "RenpyThiefPatch-v$Version-portable-x64"
 $releaseRoot = Join-Path $releaseParent $releaseName
 $archivePath = Join-Path $releaseParent "$releaseName.zip"
+$installerName = "RenpyThiefPatch-v$Version-setup-x64.exe"
+$installerPath = Join-Path $releaseParent $installerName
 $checksumPath = Join-Path $releaseParent 'SHA256SUMS.txt'
 $versionModule = Join-Path $projectRoot 'src\renpy_patch\__init__.py'
+$localizedLauncherName = [string]::Concat(@(
+    [char]0x542F, [char]0x52A8, [char]0x975E, [char]0x5B98,
+    [char]0x65B9, [char]0x8865, [char]0x4E01
+)) + '.cmd'
 
 $versionSource = Get-Content -LiteralPath $versionModule -Raw -Encoding UTF8
 if ($versionSource -notmatch ('__version__\s*=\s*["'']' + [regex]::Escape($Version) + '["'']')) {
@@ -38,13 +45,16 @@ function Assert-ChildPath {
 }
 
 foreach ($path in @(
-    $workRoot, $distRoot, $releaseParent, $releaseRoot, $archivePath, $checksumPath
+    $workRoot, $distRoot, $releaseParent, $releaseRoot, $archivePath,
+    $installerPath, $checksumPath
 )) {
     Assert-ChildPath -Parent $projectRoot -Child $path
 }
 foreach ($required in @(
     (Join-Path $projectRoot 'run_patch.py'),
     (Join-Path $projectRoot 'README.md'),
+    (Join-Path $projectRoot 'packaging\LaunchPatch.cmd'),
+    (Join-Path $projectRoot 'packaging\QUICK_START.txt'),
     (Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md'),
     (Join-Path $sourceRouter 'translate_bridge.py'),
     (Join-Path $sourceRouter 'start_routed_translator.ps1'),
@@ -66,9 +76,13 @@ if ($PublicRelease) {
         'SOURCE_AVAILABILITY.md',
         'THIRD_PARTY_SOURCE_MANIFEST.txt',
         'scripts\prepare_release_sources.ps1',
+        'scripts\build_installer.ps1',
+        'packaging\installer.iss',
+        'packaging\QUICK_START.txt',
         'THIRD_PARTY_NOTICES.md',
         'requirements-lock.txt',
         'licenses\MinHook-LICENSE.txt',
+        'licenses\Inno-Setup-6.7.3-LICENSE.txt',
         'licenses\Qt-5.15.2-LICENSE.txt',
         'licenses\Python-3.12-LICENSE.txt',
         'licenses\PyInstaller-6.22.0-COPYING.txt',
@@ -137,6 +151,10 @@ foreach ($name in @(
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'packaging\LaunchPatch.cmd') `
     -Destination (Join-Path $releaseRoot 'LaunchPatch.cmd') -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'packaging\LaunchPatch.cmd') `
+    -Destination (Join-Path $releaseRoot $localizedLauncherName) -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'packaging\QUICK_START.txt') `
+    -Destination (Join-Path $releaseRoot 'QUICK_START.txt') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $releaseRoot
 Copy-Item -LiteralPath (Join-Path $projectRoot 'UPDATE_GUARD_CONTRACT.md') `
     -Destination $releaseRoot
@@ -158,17 +176,48 @@ if (Test-Path -LiteralPath (Join-Path $projectRoot 'licenses') -PathType Contain
         -Destination $releaseRoot -Recurse -Force
 }
 
-foreach ($output in @($archivePath, $checksumPath)) {
+$staleOutputs = @($archivePath, $checksumPath)
+if ($PublicRelease) {
+    $staleOutputs += $installerPath
+}
+foreach ($output in $staleOutputs) {
     if (Test-Path -LiteralPath $output -PathType Leaf) {
         Remove-Item -LiteralPath $output -Force -ErrorAction Stop
     }
 }
 Compress-Archive -LiteralPath $releaseRoot -DestinationPath $archivePath `
     -CompressionLevel Optimal
-$archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath $checksumPath -Encoding ASCII `
-    -Value "$archiveHash  $([IO.Path]::GetFileName($archivePath))"
+
+$releaseAssets = @($archivePath)
+if ($PublicRelease) {
+    $installerBuilder = Join-Path $projectRoot 'scripts\build_installer.ps1'
+    $installerArguments = @{
+        SourceDirectory = $releaseRoot
+        OutputDirectory = $releaseParent
+    }
+    if (![string]::IsNullOrWhiteSpace($IsccPath)) {
+        $installerArguments.IsccPath = $IsccPath
+    }
+    & $installerBuilder @installerArguments
+    if (!(Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+        throw "Installer build did not create the expected asset: $installerPath"
+    }
+    $releaseAssets += $installerPath
+}
+
+$checksumLines = @(
+    $releaseAssets |
+        Sort-Object { [IO.Path]::GetFileName($_) } |
+        ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($_))"
+        }
+)
+Set-Content -LiteralPath $checksumPath -Encoding ASCII -Value $checksumLines
 
 Write-Host "Release directory: $releaseRoot"
-Write-Host "Release archive:   $archivePath"
+Write-Host "Portable archive:  $archivePath"
+if ($PublicRelease) {
+    Write-Host "Installer:         $installerPath"
+}
 Write-Host "SHA-256 list:      $checksumPath"

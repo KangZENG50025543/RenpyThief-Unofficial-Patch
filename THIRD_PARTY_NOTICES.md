@@ -30,6 +30,13 @@ PyQt5 二进制 wheel 会包含相应的 Qt 库。Qt 的开源版本包含 LGPL 
 
 - 官方说明：https://pyinstaller.org/en/stable/license.html
 
+## Inno Setup
+
+Windows 安装版使用 Inno Setup 6.7.3 将同一套便携文件封装为当前用户安装程序。安装包中由 Inno Setup 生成的安装器与卸载器受 Inno Setup License 约束；完整许可文本见 `licenses/Inno-Setup-6.7.3-LICENSE.txt`。
+
+- 官方项目：https://github.com/jrsoftware/issrc
+- 官方网站：https://jrsoftware.org/isinfo.php
+
 ## keyring 与 Python
 
 GUI 使用 `keyring` 访问 Windows 凭据管理器，便携版同时包含 Python 运行时。相应文本见 `licenses/keyring-25.7.0-LICENSE.txt` 和 `licenses/Python-3.12-LICENSE.txt`。
