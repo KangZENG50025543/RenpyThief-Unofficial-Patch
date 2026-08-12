@@ -25,13 +25,14 @@
 - `guardlaunch.exe`
 - `versionguard.dll`
 
-两个原生测试程序会写入 `native\build\x86\`。这些产物均已由 `.gitignore` 排除，不应提交到源码仓库；它们只应出现在经过验证的 GitHub Release 中。
+三个原生测试程序会写入 `native\build\x86\`。这些产物均已由 `.gitignore` 排除，不应提交到源码仓库；它们只应出现在经过验证的 GitHub Release 中。
 
 运行原生测试：
 
 ```powershell
 .\native\build\x86\version_endpoint_test.exe
 .\native\build\x86\ipcroute_test.exe .\router\ipcroute.dll
+.\native\build\x86\guardlaunch_policy_test.exe
 ```
 
 编译或分发包含 MinHook 的二进制文件时，必须保留其许可证声明，参见 `THIRD_PARTY_NOTICES.md`。

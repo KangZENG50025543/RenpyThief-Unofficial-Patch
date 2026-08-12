@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "guardlaunch_policy.h"
+
 namespace {
 
 constexpr DWORD kDefaultTimeoutMs = 10000;
@@ -362,13 +364,22 @@ int wmain(int argc, wchar_t** argv)
     const DWORD blockedWait = WaitForMultipleObjects(
         static_cast<DWORD>(_countof(blockedWaits)), blockedWaits, FALSE,
         kBlockedCheckTimeoutMs);
-    if (blockedWait != WAIT_OBJECT_0) {
+    const BlockedWaitAction blockedAction = ClassifyBlockedWait(blockedWait);
+    if (blockedAction == BlockedWaitAction::ContinueUnconfirmed) {
+        AppendAudit(
+            guard, process.dwProcessId,
+            "state=blocked_check_missing reason=timeout action=continue_unconfirmed");
+        std::fwprintf(
+            stderr,
+            L"WARNING: no known version check was observed within %lu ms; "
+            L"continuing with update protection unconfirmed.\n",
+            kBlockedCheckTimeoutMs);
+        std::fflush(stderr);
+    } else if (blockedAction == BlockedWaitAction::FailClosed) {
         const char* state = blockedWait == WAIT_OBJECT_0 + 1
                                 ? "state=blocked_check_missing reason=hook_failed action=fail_closed"
                             : blockedWait == WAIT_OBJECT_0 + 2
                                 ? "state=blocked_check_missing reason=process_exited action=fail_closed"
-                            : blockedWait == WAIT_TIMEOUT
-                                ? "state=blocked_check_missing reason=timeout action=fail_closed"
                                 : "state=blocked_check_missing reason=wait_failed action=fail_closed";
         AppendAudit(guard, process.dwProcessId, state);
         std::fwprintf(stderr,
@@ -382,10 +393,11 @@ int wmain(int argc, wchar_t** argv)
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
         return 11;
+    } else {
+        AppendAudit(
+            guard, process.dwProcessId,
+            "state=blocked_check blocked_count_at_least=1 action=release_launcher");
     }
-
-    AppendAudit(guard, process.dwProcessId,
-                "state=blocked_check blocked_count_at_least=1 action=release_launcher");
 
     std::wprintf(L"Started guarded RenpyThief PID %lu.\n",
                  process.dwProcessId);

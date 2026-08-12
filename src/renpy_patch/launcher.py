@@ -21,6 +21,7 @@ from .settings import find_router_script
 class LaunchEventKind(str, Enum):
     STARTING = "starting"
     READY = "ready"
+    WARNING = "warning"
     STOPPING = "stopping"
     LOG = "log"
     EXITED = "exited"
@@ -39,6 +40,16 @@ EventCallback = Callable[[LaunchEvent], None]
 _PID_PATTERN = re.compile(r"Started clean RenpyThief PID (\d+)\.")
 _ROUTE_PATTERN = re.compile(r"Translator-wide route active:")
 _GUARDED_PID_PATTERN = re.compile(r"^Started guarded RenpyThief PID (\d+)\.$")
+_GUARDED_PID_HINT_PATTERN = re.compile(
+    r"(?:^|\r?\n)Started guarded RenpyThief PID (\d+)\.(?:\r?\n|$)"
+)
+_GUARD_WARNING_PATTERN = re.compile(
+    r"^WARNING: no known version check was observed within (\d+) ms; "
+    r"continuing with update protection unconfirmed\.$"
+)
+_CUSTOM_GUARD_WARNING_PATTERN = re.compile(
+    r"\bUPDATE_GUARD_WARNING:\s*timeout_ms=(\d+)\b"
+)
 
 
 def _block_updates(settings: AppSettings) -> bool:
@@ -240,6 +251,13 @@ class _WindowsPidProcess:
         kernel32.WaitForSingleObject.restype = ctypes.c_ulong
         kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
         kernel32.TerminateProcess.restype = ctypes.c_int
+        kernel32.QueryFullProcessImageNameW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_wchar_p,
+            ctypes.POINTER(ctypes.c_ulong),
+        ]
+        kernel32.QueryFullProcessImageNameW.restype = ctypes.c_int
         kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
         kernel32.CloseHandle.restype = ctypes.c_int
         self._kernel32 = kernel32
@@ -280,6 +298,15 @@ class _WindowsPidProcess:
         if not self._kernel32.TerminateProcess(self._handle, 1):
             raise OSError(ctypes.get_last_error(), "TerminateProcess failed")
 
+    def image_path(self) -> Path:
+        size = ctypes.c_ulong(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not self._kernel32.QueryFullProcessImageNameW(
+            self._handle, 0, buffer, ctypes.byref(size)
+        ):
+            raise OSError(ctypes.get_last_error(), "Cannot identify guarded RenpyThief")
+        return Path(buffer.value)
+
     def close(self) -> None:
         handle = getattr(self, "_handle", None)
         if handle:
@@ -290,9 +317,15 @@ class _WindowsPidProcess:
         self.close()
 
 
+@dataclass(frozen=True, slots=True)
+class _GuardedLaunch:
+    process: _WindowsPidProcess
+    warning: str | None = None
+
+
 def _launch_guarded_translator(
     translator: Path, router_script: Path | None = None
-) -> _WindowsPidProcess:
+) -> _GuardedLaunch:
     script = router_script or find_router_script()
     if script is None or not script.is_file():
         raise FileNotFoundError("找不到补丁更新保护组件目录。")
@@ -311,24 +344,57 @@ def _launch_guarded_translator(
             env=_sanitized_translator_environment(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             check=False,
             timeout=50,
         )
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(
-            "更新保护启动器超时；原程序没有在未确认保护的情况下继续运行。"
+            "更新保护启动器在总等待期限内没有返回；无法确认目标进程状态。"
         ) from error
     output = completed.stdout.decode("utf-8", errors="replace").strip()
+    diagnostics = completed.stderr.decode("utf-8", errors="replace").strip()
     if completed.returncode != 0:
+        details = " ".join(part for part in (diagnostics, output) if part)
         raise RuntimeError(
-            f"更新保护启动失败并已安全中止（代码 {completed.returncode}）：{output}"
+            f"更新保护启动失败并已安全中止（代码 {completed.returncode}）：{details}"
         )
-    match = _GUARDED_PID_PATTERN.fullmatch(output)
-    if not match:
-        raise RuntimeError(f"更新保护启动器返回了无效结果：{output}")
-    return _WindowsPidProcess(int(match.group(1)))
+    process: _WindowsPidProcess | None = None
+    try:
+        pid_hint = _GUARDED_PID_HINT_PATTERN.search(output)
+        if pid_hint:
+            process = _WindowsPidProcess(int(pid_hint.group(1)))
+            actual_path = os.path.normcase(str(process.image_path().resolve()))
+            expected_path = os.path.normcase(str(translator.resolve()))
+            if actual_path != expected_path:
+                process.close()
+                process = None
+                raise RuntimeError("更新保护启动器返回的进程路径不匹配。")
+        match = _GUARDED_PID_PATTERN.fullmatch(output)
+        if not match or process is None:
+            raise RuntimeError(f"更新保护启动器返回了无效结果：{output}")
+        warning: str | None = None
+        if diagnostics:
+            warning_match = _GUARD_WARNING_PATTERN.fullmatch(diagnostics)
+            if not warning_match:
+                raise RuntimeError(f"更新保护启动器返回了未知诊断：{diagnostics}")
+            timeout_seconds = int(warning_match.group(1)) / 1000
+            warning = (
+                f"更新保护钩子已就绪，但 {timeout_seconds:g} 秒内没有观察到已知版本检查；"
+                "RenpyThief 将继续启动，更新保护状态尚未确认。"
+            )
+        return _GuardedLaunch(process, warning)
+    except Exception:
+        if process is not None:
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except Exception:
+                pass
+            finally:
+                process.close()
+        raise
 
 
 def _request_window_close(process_id: int) -> bool:
@@ -419,8 +485,11 @@ class PatchLauncher:
 
         self._emit(LaunchEventKind.STARTING, "正在启动……")
         if mode is TranslationMode.OFFICIAL:
+            guard_warning: str | None = None
             if _block_updates(settings):
-                process = _launch_guarded_translator(translator)
+                guarded_launch = _launch_guarded_translator(translator)
+                process = guarded_launch.process
+                guard_warning = guarded_launch.warning
             else:
                 process = subprocess.Popen(
                     [str(translator.resolve())],
@@ -435,6 +504,8 @@ class PatchLauncher:
                 self._translator_pid = process.pid
                 self._mode = mode
                 self._stop_requested = False
+            if guard_warning is not None:
+                self._emit(LaunchEventKind.WARNING, guard_warning, process.pid)
             threading.Thread(
                 target=self._monitor_official,
                 args=(process,),
@@ -537,7 +608,16 @@ class PatchLauncher:
                 self._emit(LaunchEventKind.LOG, "RenpyThief 已启动。", pid)
                 if should_stop:
                     _request_window_close(pid)
-            if _ROUTE_PATTERN.search(line):
+            guard_warning = _CUSTOM_GUARD_WARNING_PATTERN.search(line)
+            if guard_warning:
+                timeout_seconds = int(guard_warning.group(1)) / 1000
+                self._emit(
+                    LaunchEventKind.WARNING,
+                    f"更新保护钩子已就绪，但 {timeout_seconds:g} 秒内没有观察到已知版本检查；"
+                    "RenpyThief 将继续启动，更新保护状态尚未确认。",
+                    self.translator_pid,
+                )
+            elif _ROUTE_PATTERN.search(line):
                 ready = True
                 self._emit(
                     LaunchEventKind.READY,
