@@ -1,6 +1,6 @@
 # 对应源码获取与发布要求
 
-本文件记录便携二进制版本的源码边界。它用于帮助发布者履行 GPL/LGPL
+本文件记录安装版与便携版二进制的源码边界。它用于帮助发布者履行 GPL/LGPL
 义务，不构成法律意见。
 
 ## 补丁自身源码
@@ -11,7 +11,7 @@ Python、PowerShell、C/C++ 源码、构建脚本和锁定依赖清单。
 
 ## 主要第三方源码
 
-当前 `v0.1.0` 构建基线如下：
+当前 `v0.1.1` 构建基线如下；依赖版本相对 `v0.1.0` 未发生变化：
 
 | 组件 | 版本 | 锁定源码归档 | 摘要依据 |
 |---|---:|---|---|
@@ -27,20 +27,23 @@ Python、PowerShell、C/C++ 源码、构建脚本和锁定依赖清单。
 其余 Python 组件的精确版本见 `DEPENDENCIES.txt`（源码仓库中为
 `requirements-lock.txt`），实际许可证文本见 `licenses/`。
 
-## 生成首发源码附件
+## 生成 v0.1.1 源码附件
 
 在仓库根目录运行：
 
 ```powershell
 # 只解析清单、核对锁定版本并显示下载计划；不联网、不写文件
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
+  -Version 0.1.1 -OutputDirectory .\release\source-assets-v0.1.1 -DryRun
 
 # 下载四个精确归档并逐个限制大小、校验 SHA-256
-# 默认目录为 release\source-assets-v0.1.0，总下载量约 582 MiB，Qt 占绝大部分
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1
+# v0.1.1 发布目录为 release\source-assets-v0.1.1，总下载量约 582 MiB，Qt 占绝大部分
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
+  -Version 0.1.1 -OutputDirectory .\release\source-assets-v0.1.1
 
 # 上传前再次进行纯本地校验
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 -VerifyOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
+  -Version 0.1.1 -OutputDirectory .\release\source-assets-v0.1.1 -VerifyOnly
 ```
 
 下载脚本具有以下门禁：
@@ -55,8 +58,8 @@ MinHook 的上游没有为 GitHub 自动生成的源码归档发布摘要。本�
 2026-08-09 两次独立 HTTPS 下载一致的 SHA-256。GitHub 将来若改变自动归档的
 封装方式，脚本会安全失败；发布者应检查归档树仍对应该提交后再有意更新清单。
 
-Qt 归档约 560 MiB，本次准备工作没有自动下载该巨型文件。正式首发前必须运行
-完整下载命令并通过 `-VerifyOnly`，再把实际文件上传到 Release。
+Qt 归档约 560 MiB。正式发布前必须保证四个归档均已完整取得并通过
+`-VerifyOnly`，再把实际文件上传到 Release；不能只上传补丁二进制。
 
 ## 构建来源风险
 
@@ -76,7 +79,7 @@ Python.org 的 CPython 源码归档只记录上游基线。
 2. 记录最终构建实际使用的依赖版本；不得用“相近版本”代替。
 3. 为随包分发的 GPL/LGPL 组件提供精确对应源码，或落实许可证正文允许的
    其他等效提供方式。仅记录一个可能消失的第三方链接不自动保证合规。
-4. 首发时，将清单中的 PyQt5、Qt、MinHook、Python 源码归档、必要构建补丁和
+4. 每次发布安装版或便携版时，将清单中的 PyQt5、Qt、MinHook、Python 源码归档、必要构建补丁和
    `SOURCE_ARCHIVES.SHA256` 作为同一个 GitHub Release 的附加资产。
 5. 二进制仍可下载期间，应持续保证相应源码获取方式有效。
 

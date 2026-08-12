@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.1.1',
 
     [string]$Python = 'python.exe',
 
@@ -18,6 +18,10 @@ if ([string]::IsNullOrWhiteSpace($scriptPath)) {
 $scriptDirectory = Split-Path -Parent ([IO.Path]::GetFullPath($scriptPath))
 $repositoryRoot = Split-Path -Parent $scriptDirectory
 $expectedRoot = [IO.Path]::GetFullPath($repositoryRoot).TrimEnd('\')
+$localizedLauncherName = [string]::Concat(@(
+    [char]0x542F, [char]0x52A8, [char]0x975E, [char]0x5B98,
+    [char]0x65B9, [char]0x8865, [char]0x4E01
+)) + '.cmd'
 
 function Invoke-External {
     param(
@@ -110,8 +114,10 @@ finally {
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$releaseName = "RenpyThiefPatch-v$Version-windows-x64"
+$releaseName = "RenpyThiefPatch-v$Version-portable-x64"
 $archivePath = Join-Path $repositoryRoot "release\$releaseName.zip"
+$installerName = "RenpyThiefPatch-v$Version-setup-x64.exe"
+$installerPath = Join-Path $repositoryRoot "release\$installerName"
 $checksumPath = Join-Path $repositoryRoot 'release\SHA256SUMS.txt'
 if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
     throw "Release ZIP not found: $archivePath"
@@ -119,10 +125,68 @@ if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) {
     throw "Release checksum not found: $checksumPath"
 }
-$archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$checksumLine = (Get-Content -Raw -LiteralPath $checksumPath -Encoding ASCII).Trim()
-if ($checksumLine -cne "$archiveHash  $releaseName.zip") {
-    throw 'SHA256SUMS.txt does not exactly match the release ZIP.'
+if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+    throw "Release installer not found: $installerPath"
+}
+
+$installerItem = Get-Item -LiteralPath $installerPath
+if ($installerItem.Length -le 0) {
+    throw "Release installer is empty: $installerPath"
+}
+$installerStream = [IO.File]::Open(
+    $installerPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::Read,
+    [IO.FileShare]::Read
+)
+try {
+    if ($installerStream.Length -lt 68 -or
+        $installerStream.ReadByte() -ne 0x4D -or
+        $installerStream.ReadByte() -ne 0x5A) {
+        throw "Release installer does not have an MZ executable signature: $installerPath"
+    }
+
+    $installerStream.Position = 0x3C
+    $installerReader = [IO.BinaryReader]::new(
+        $installerStream,
+        [Text.Encoding]::ASCII,
+        $true
+    )
+    try {
+        $peOffset = $installerReader.ReadInt32()
+    }
+    finally {
+        $installerReader.Dispose()
+    }
+    if ($peOffset -lt 0x40 -or $peOffset -gt ($installerStream.Length - 4)) {
+        throw "Release installer has an invalid PE header offset: $installerPath"
+    }
+    $installerStream.Position = $peOffset
+    if ($installerStream.ReadByte() -ne 0x50 -or
+        $installerStream.ReadByte() -ne 0x45 -or
+        $installerStream.ReadByte() -ne 0x00 -or
+        $installerStream.ReadByte() -ne 0x00) {
+        throw "Release installer does not have a PE executable signature: $installerPath"
+    }
+}
+finally {
+    $installerStream.Dispose()
+}
+
+$releaseAssetPaths = @($archivePath, $installerPath) |
+    Sort-Object { [IO.Path]::GetFileName($_) }
+$expectedChecksumLines = @(
+    $releaseAssetPaths | ForEach-Object {
+        $hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$hash  $([IO.Path]::GetFileName($_))"
+    }
+)
+$expectedChecksumText = ($expectedChecksumLines -join "`n") + "`n"
+$actualChecksumText = (
+    Get-Content -Raw -LiteralPath $checksumPath -Encoding ASCII
+).Replace("`r`n", "`n")
+if ($actualChecksumText -cne $expectedChecksumText) {
+    throw 'SHA256SUMS.txt must contain exactly the sorted installer and portable ZIP hashes.'
 }
 
 $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
@@ -133,6 +197,8 @@ try {
     $requiredEntries = @(
         'RenpyThiefPatch.exe',
         'LaunchPatch.cmd',
+        $localizedLauncherName,
+        'QUICK_START.txt',
         'router\translate_bridge.exe',
         'router\ipcroute.dll',
         'router\netinject.exe',
@@ -153,12 +219,40 @@ try {
     if ($missingEntries.Count -gt 0) {
         throw "Release ZIP is missing: $($missingEntries -join ', ')"
     }
-    $forbiddenReleasePattern = '(?i)(^|/)(API(?:_siliconflow)?\.txt|[^/]*_api\.txt|api_[^/]*\.txt|[^/]*(?:token|secret)[^/]*\.txt|user|hwid|settings\.json|RenpyThief\.exe|RenpyUpdater\.exe|[^/]+\.(?:log|pdb|pcap|pcapng|har|dmp|etl))$'
+    $forbiddenReleasePattern = '(?i)(^|/)(API(?:_siliconflow)?\.txt|[^/]*_api\.txt|api_[^/]*\.txt|[^/]*(?:token|secret)[^/]*\.txt|user|hwid|settings\.json|RenpyThief\.exe|RenpyUpdater\.exe|RenpyThief(?:[_-][^/]*)?\.zip|[^/]+\.(?:log|pdb|pcap|pcapng|har|dmp|etl))$'
     $forbiddenArchiveEntries = @($entryNames | ForEach-Object {
         $_.Replace($separator, '/')
     } | Where-Object { $_ -match $forbiddenReleasePattern })
     if ($forbiddenArchiveEntries.Count -gt 0) {
         throw "Forbidden release entries: $($forbiddenArchiveEntries -join ', ')"
+    }
+
+    $textEntryPattern = '(?i)\.(?:cmd|ini|json|md|ps1|py|txt|yaml|yml)$'
+    foreach ($entry in @($archive.Entries | Where-Object {
+        $_.Length -le 2MB -and $_.FullName -match $textEntryPattern
+    })) {
+        $entryStream = $entry.Open()
+        try {
+            $reader = [IO.StreamReader]::new(
+                $entryStream,
+                [Text.Encoding]::UTF8,
+                $true
+            )
+            try {
+                $entryText = $reader.ReadToEnd()
+            }
+            finally {
+                $reader.Dispose()
+            }
+        }
+        finally {
+            $entryStream.Dispose()
+        }
+        foreach ($pattern in $secretPatterns) {
+            if ($entryText -match $pattern) {
+                throw "Possible secret in release ZIP entry: $($entry.FullName)"
+            }
+        }
     }
 }
 finally {
@@ -167,11 +261,14 @@ finally {
 
 if (-not $SkipSourceArchives) {
     $sourceScript = Join-Path $repositoryRoot 'scripts\prepare_release_sources.ps1'
+    $sourceDirectory = Join-Path $repositoryRoot "release\source-assets-v$Version"
     Invoke-External -FilePath 'powershell.exe' -Arguments @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $sourceScript, '-VerifyOnly'
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $sourceScript,
+        '-Version', $Version, '-OutputDirectory', $sourceDirectory, '-VerifyOnly'
     )
 }
 
 Write-Host "Preflight passed for $releaseName."
 Write-Host "Tracked source files: $($trackedFiles.Count)"
-Write-Host "Release SHA-256: $archiveHash"
+Write-Host "Portable SHA-256: $((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "Installer SHA-256: $((Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant())"

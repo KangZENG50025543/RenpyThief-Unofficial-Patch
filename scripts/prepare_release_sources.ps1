@@ -1,5 +1,8 @@
 [CmdletBinding()]
 param(
+    [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
+    [string]$Version = '0.1.1',
+
     [Parameter()]
     [string]$OutputDirectory,
 
@@ -29,7 +32,7 @@ $lockPath = Join-Path $repositoryRoot 'requirements-lock.txt'
 $nativeReadmePath = Join-Path $repositoryRoot 'native\README.md'
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repositoryRoot 'release\source-assets-v0.1.0'
+    $OutputDirectory = Join-Path $repositoryRoot "release\source-assets-v$Version"
 }
 
 $outputFullPath = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -382,7 +385,7 @@ $handler.AllowAutoRedirect = $true
 $handler.MaxAutomaticRedirections = 5
 $client = [System.Net.Http.HttpClient]::new($handler)
 $client.Timeout = [TimeSpan]::FromHours(6)
-$client.DefaultRequestHeaders.UserAgent.ParseAdd('RenpyThiefPatch-source-prep/0.1.0')
+$client.DefaultRequestHeaders.UserAgent.ParseAdd("RenpyThiefPatch-source-prep/$Version")
 
 try {
     foreach ($row in $manifestRows) {
