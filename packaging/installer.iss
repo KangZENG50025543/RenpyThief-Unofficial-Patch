@@ -1,5 +1,5 @@
 #define MyAppName "RenpyThief 非官方翻译补丁"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "KangZENG50025543"
 #define MyAppURL "https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch"
 #define MyAppExeName "RenpyThiefPatch.exe"
@@ -32,7 +32,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDirectory}
-OutputBaseFilename=RenpyThiefPatch-v0.1.1-setup-x64
+OutputBaseFilename=RenpyThiefPatch-v0.1.2-setup-x64
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -43,12 +43,12 @@ AppMutex=RenpyThiefUnofficialPatch.Gui.v1
 CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
-VersionInfoVersion=0.1.1.0
+VersionInfoVersion=0.1.2.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} 安装程序
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
-VersionInfoOriginalFileName=RenpyThiefPatch-v0.1.1-setup-x64.exe
+VersionInfoOriginalFileName=RenpyThiefPatch-v0.1.2-setup-x64.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
