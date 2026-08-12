@@ -28,14 +28,14 @@
 
 | 下载文件 | 适合谁 | 如何使用 |
 |---|---|---|
-| `RenpyThiefPatch-v0.1.1-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
-| `RenpyThiefPatch-v0.1.1-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
+| `RenpyThiefPatch-v0.1.2-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
+| `RenpyThiefPatch-v0.1.2-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
 
 两种版本功能相同，均已包含 GUI、翻译 Bridge 和所需程序组件，不需要另外安装 Python。它们都**不包含 RenpyThief**；请自行合法取得目前受支持的 RenpyThief 6.7.8 x86。
 
 ### 安装版（推荐）
 
-1. 打开最新的 GitHub Release，下载 `RenpyThiefPatch-v0.1.1-setup-x64.exe`。
+1. 打开最新的 GitHub Release，下载 `RenpyThiefPatch-v0.1.2-setup-x64.exe`。
 2. 可同时下载 `SHA256SUMS.txt`，按下方命令核对文件完整性。
 3. 关闭游戏、RenpyThief 和旧版补丁，再运行安装器。
 4. 按安装向导完成安装。开始菜单快捷方式会自动创建；“创建桌面快捷方式”默认勾选，可按需取消。
@@ -45,7 +45,7 @@
 
 ### 便携版
 
-1. 下载 `RenpyThiefPatch-v0.1.1-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
+1. 下载 `RenpyThiefPatch-v0.1.2-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
 2. 将 ZIP **完整解压**到当前用户可写的独立目录，例如 `D:\Tools\RenpyThiefPatch`。
 3. 先阅读包内 `QUICK_START.txt`，再运行 `RenpyThiefPatch.exe`；也可以双击 `LaunchPatch.cmd`。
 
@@ -54,8 +54,8 @@
 校验 SHA-256：
 
 ```powershell
-(Get-FileHash .\RenpyThiefPatch-v0.1.1-setup-x64.exe -Algorithm SHA256).Hash
-(Get-FileHash .\RenpyThiefPatch-v0.1.1-portable-x64.zip -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v0.1.2-setup-x64.exe -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v0.1.2-portable-x64.zip -Algorithm SHA256).Hash
 ```
 
 将输出与同一 Release 中 `SHA256SUMS.txt` 对应文件名的值比较；不一致时不要运行或安装。
@@ -299,28 +299,28 @@ python -m unittest discover -s tests -v
 先准备好 `router\` 中的四个原生运行文件。由于 PyInstaller 的 Qt 收集逻辑在部分版本中不能正确处理含中文的虚拟环境路径，**发布构建用的 venv 必须放在纯英文路径**：
 
 ```powershell
-$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-0.1.1'
+$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-0.1.2'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 0.1.1 -Python "$buildVenv\Scripts\python.exe"
+.\build_release.ps1 -Version 0.1.2 -Python "$buildVenv\Scripts\python.exe"
 ```
 
 不加 `-PublicRelease` 时，脚本只生成便携目录、便携 ZIP 和仅含便携 ZIP 的校验文件：
 
 ```text
-release\RenpyThiefPatch-v0.1.1-portable-x64\
-release\RenpyThiefPatch-v0.1.1-portable-x64.zip
+release\RenpyThiefPatch-v0.1.2-portable-x64\
+release\RenpyThiefPatch-v0.1.2-portable-x64.zip
 release\SHA256SUMS.txt
 ```
 
 正式公开发布时应使用 `-PublicRelease`；它会继续调用 Inno Setup 6.7.3 生成安装器，并让 `SHA256SUMS.txt` 同时覆盖安装器和便携 ZIP。如果缺少许可证文件、安装器定义或编译器，脚本会拒绝生成公开发布资产：
 
 ```powershell
-.\build_release.ps1 -Version 0.1.1 -Python "$buildVenv\Scripts\python.exe" `
+.\build_release.ps1 -Version 0.1.2 -Python "$buildVenv\Scripts\python.exe" `
   -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
 ```
 
-正式构建最终应再包含 `release\RenpyThiefPatch-v0.1.1-setup-x64.exe`。
+正式构建最终应再包含 `release\RenpyThiefPatch-v0.1.2-setup-x64.exe`。
 
 建议在干净虚拟环境中构建，并记录最终依赖版本。`build\`、`dist\`、`release\` 和原生二进制不应提交进 Git 历史。
 

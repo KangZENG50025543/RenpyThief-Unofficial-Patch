@@ -16,7 +16,7 @@ Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $installerScript = Join-Path $projectRoot 'packaging\installer.iss'
-$expectedFileName = 'RenpyThiefPatch-v0.1.1-setup-x64.exe'
+$expectedFileName = 'RenpyThiefPatch-v0.1.2-setup-x64.exe'
 
 function Resolve-ExistingFile {
     param([Parameter(Mandatory = $true)][string]$Path)

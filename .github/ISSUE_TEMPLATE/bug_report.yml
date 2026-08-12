@@ -13,8 +13,8 @@ body:
     id: patch-version
     attributes:
       label: 补丁版本
-      description: 例如 v0.1.1；若从源码运行，请填写提交哈希。
-      placeholder: v0.1.1
+      description: 例如 v0.1.2；若从源码运行，请填写提交哈希。
+      placeholder: v0.1.2
     validations:
       required: true
 
