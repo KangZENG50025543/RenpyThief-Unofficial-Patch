@@ -58,6 +58,7 @@ link /nologo /dll /out:"%OUTPUT%\versionguard.dll" /implib:versionguard.lib vers
 
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0ipcroute_test.cpp" /Fe:ipcroute_test.exe /link ws2_32.lib || goto :fail
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0version_endpoint_test.cpp" /Fe:version_endpoint_test.exe || goto :fail
+cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0guardlaunch_policy_test.cpp" /Fe:guardlaunch_policy_test.exe || goto :fail
 
 popd
 echo Built x86 runtime files in "%OUTPUT%".

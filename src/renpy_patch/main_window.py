@@ -662,6 +662,9 @@ class MainWindow(QMainWindow):
         elif event.kind is LaunchEventKind.READY:
             active = "官方额度" if self.official_radio.isChecked() else "我的 API"
             self._set_status("ready", f"{active} · 已就绪", event.message)
+        elif event.kind is LaunchEventKind.WARNING:
+            self._set_status("warning", "更新保护未确认", event.message)
+            QMessageBox.warning(self, "更新保护未确认", event.message)
         elif event.kind is LaunchEventKind.STOPPING:
             self._set_status("starting", "正在停止", event.message)
             self.stop_button.setEnabled(False)
@@ -697,6 +700,7 @@ class MainWindow(QMainWindow):
             "idle": "#98a2b3",
             "starting": "#f59e0b",
             "ready": "#16a34a",
+            "warning": "#f59e0b",
             "error": "#dc2626",
         }
         self.status_dot.setStyleSheet(f"color: {colors.get(state, colors['idle'])};")

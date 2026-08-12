@@ -14,6 +14,7 @@ sys.path.insert(0, str(PROJECT_DIR / "src"))
 
 from PyQt5.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
+from renpy_patch.launcher import LaunchEvent, LaunchEventKind  # noqa: E402
 from renpy_patch.main_window import MainWindow  # noqa: E402
 from renpy_patch.models import PromptMode, ProviderId  # noqa: E402
 from renpy_patch.settings import SettingsStore  # noqa: E402
@@ -84,6 +85,33 @@ class GuiControlTests(unittest.TestCase):
         self.assertEqual(
             self.window.credential_labels[1].text(), "应用密钥 (app_secret)"
         )
+
+    def test_update_guard_warning_keeps_running_and_ready_can_follow(self) -> None:
+        self.window._handle_launch_event(
+            LaunchEvent(LaunchEventKind.STARTING, "正在启动……")
+        )
+        with (
+            patch.object(QMessageBox, "warning") as warning,
+            patch.object(QMessageBox, "critical") as critical,
+        ):
+            self.window._handle_launch_event(
+                LaunchEvent(
+                    LaunchEventKind.WARNING,
+                    "20 秒内没有观察到已知版本检查，继续启动。",
+                    4321,
+                )
+            )
+            self.assertFalse(self.window.start_button.isEnabled())
+            self.assertTrue(self.window.stop_button.isEnabled())
+            self.assertEqual(self.window.status_title.text(), "更新保护未确认")
+            warning.assert_called_once()
+            critical.assert_not_called()
+
+        self.window.official_radio.setChecked(True)
+        self.window._handle_launch_event(
+            LaunchEvent(LaunchEventKind.READY, "RenpyThief 已启动。", 4321)
+        )
+        self.assertEqual(self.window.status_title.text(), "官方额度 · 已就绪")
 
 
 if __name__ == "__main__":

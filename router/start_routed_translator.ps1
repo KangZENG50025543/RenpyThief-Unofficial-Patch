@@ -301,8 +301,18 @@ function Start-GuardedTranslator {
             $validatedProcessId -ne $processId) {
             throw 'Version-update guard returned an invalid process ID.'
         }
+        $guardWarning = $stderr.Trim()
+        $expectedWarning = '^WARNING: no known version check was observed within (\d+) ms; continuing with update protection unconfirmed\.$'
+        $warningMatch = [regex]::Match($guardWarning, $expectedWarning)
+        if ($guardWarning -and !$warningMatch.Success) {
+            throw "Version-update guard returned an unknown diagnostic: $guardWarning"
+        }
         $process = Get-Process -Id $processId -ErrorAction Stop
-        Write-Host "Version-update guard confirmed a blocked version check for RenpyThief PID $processId."
+        if ($guardWarning) {
+            Write-Warning "UPDATE_GUARD_WARNING: timeout_ms=$($warningMatch.Groups[1].Value)"
+        } else {
+            Write-Host "Version-update guard confirmed a blocked version check for RenpyThief PID $processId."
+        }
         return $process
     } catch {
         # A zero-exit guardlaunch has resumed a protected process. If protocol
