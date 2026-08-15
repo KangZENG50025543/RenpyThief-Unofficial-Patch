@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Mapping
 
-from .models import AppSettings, TranslationMode
+from .models import AppSettings, CUSTOM_PROMPT_MODES, TranslationMode
 from .providers import is_loopback_base_url, make_launch_profile
 from .settings import find_router_script
 
@@ -250,13 +250,13 @@ def _custom_bridge_environment(
         raise ValueError("凭据字段不能包含空格、换行或 NUL。")
 
     prompt_mode = str(getattr(settings, "prompt_mode", "template1"))
-    custom_prompt = str(getattr(settings, "custom_prompt", ""))
+    custom_prompt = settings.selected_custom_prompt()
     if profile.payload_profile not in dedicated_fields:
-        if prompt_mode not in {"template1", "template2", "custom"}:
+        if prompt_mode not in {"template1", "template2", *CUSTOM_PROMPT_MODES}:
             raise ValueError("提示词模式无效。")
         if len(custom_prompt) > 16_384 or "\0" in custom_prompt:
             raise ValueError("自定义提示词过长或包含 NUL。")
-        if prompt_mode == "custom" and not custom_prompt.strip():
+        if prompt_mode in CUSTOM_PROMPT_MODES and not custom_prompt.strip():
             raise ValueError("自定义提示词不能为空。")
 
     # Start from the same allowlist-oriented environment used for RenpyThief,
@@ -277,8 +277,10 @@ def _custom_bridge_environment(
             environment["UPSTREAM_API_KEY"] = api_key
         elif not is_loopback_base_url(profile.base_url):
             raise ValueError("非本机 API 必须填写 API Key。")
-        environment["UPSTREAM_PROMPT_MODE"] = prompt_mode
-        if prompt_mode == "custom":
+        environment["UPSTREAM_PROMPT_MODE"] = (
+            "custom" if prompt_mode in CUSTOM_PROMPT_MODES else prompt_mode
+        )
+        if prompt_mode in CUSTOM_PROMPT_MODES:
             environment["UPSTREAM_CUSTOM_PROMPT"] = custom_prompt
     return environment
 

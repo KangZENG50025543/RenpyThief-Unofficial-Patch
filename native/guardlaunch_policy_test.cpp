@@ -1,6 +1,7 @@
 #include <Windows.h>
 
 #include "guardlaunch_policy.h"
+#include "session_compat_policy.h"
 
 int wmain()
 {
@@ -38,6 +39,19 @@ int wmain()
         !IsBlockedChildEnvironmentName(L"BRIDGE_LOG_CONTENT") ||
         !IsBlockedChildEnvironmentName(L"VENDOR_TOKEN")) {
         return 6;
+    }
+    const std::string record = LocalSessionRecordText();
+    if (record.find("username=local") == std::string::npos ||
+        record.find(kLocalSessionPasswordHex) == std::string::npos ||
+        std::string(kLocalSessionPasswordHex).size() != 64) {
+        return 7;
+    }
+    if (!ShouldWriteLocalSessionRecord(false, false, false, 0) ||
+        !ShouldWriteLocalSessionRecord(true, false, false, 0) ||
+        ShouldWriteLocalSessionRecord(true, false, false, 2) ||
+        ShouldWriteLocalSessionRecord(true, true, false, 0) ||
+        ShouldWriteLocalSessionRecord(true, false, true, 0)) {
+        return 8;
     }
     return 0;
 }

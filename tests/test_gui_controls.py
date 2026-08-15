@@ -69,10 +69,13 @@ class GuiControlTests(unittest.TestCase):
 
     def test_prompt_controls_are_ai_only(self) -> None:
         self.window.custom_radio.setChecked(True)
-        prompt_index = self.window.prompt_combo.findData(PromptMode.CUSTOM.value)
+        prompt_index = self.window.prompt_combo.findData(PromptMode.CUSTOM1.value)
         self.window.prompt_combo.setCurrentIndex(prompt_index)
         self.assertFalse(self.window.prompt_group.isHidden())
         self.assertFalse(self.window.custom_prompt_edit.isHidden())
+        self.assertEqual(self.window.prompt_combo.count(), 5)
+        prompt_index_3 = self.window.prompt_combo.findData(PromptMode.CUSTOM3.value)
+        self.assertGreater(prompt_index_3, 0)
         prompt_text = self.window.custom_prompt_edit.toPlainText()
         self.assertIn("{source}", prompt_text)
         self.assertIn("{target}", prompt_text)

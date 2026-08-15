@@ -2,18 +2,18 @@
 
 本文面向项目维护者。所有 Git 操作都必须在独立的 `UnofficialPatch` 仓库中执行；不要在上级原软件目录或整个 Windows 用户目录中执行。
 
-## 1. v1.0.1 发布目标
+## 1. v1.0.2 发布目标
 
 本版本同时提供两个面向最终用户的 Windows x64 资产：
 
-- `RenpyThiefPatch-v1.0.1-setup-x64.exe`：推荐安装版；包含开始菜单快捷方式、默认勾选的可选桌面快捷方式、使用说明入口和卸载项。
-- `RenpyThiefPatch-v1.0.1-portable-x64.zip`：开箱即用便携版；完整解压后运行，不需要安装 Python。
+- `RenpyThiefPatch-v1.0.2-setup-x64.exe`：推荐安装版；包含开始菜单快捷方式、默认勾选的可选桌面快捷方式、使用说明入口和卸载项。
+- `RenpyThiefPatch-v1.0.2-portable-x64.zip`：开箱即用便携版；完整解压后运行，不需要安装 Python。
 
-两者必须由同一提交构建、功能一致，并对应同一个不可变标签 `v1.0.1`。不得把原版 RenpyThief、游戏文件、用户凭据或分析资料打进任何资产。v1.0.1 作为正式版发布，不要勾选 Pre-release。
+两者必须由同一提交构建、功能一致，并对应同一个不可变标签 `v1.0.2`。不得把原版 RenpyThief、游戏文件、用户凭据或分析资料打进任何资产。v1.0.2 作为正式版发布，不要勾选 Pre-release。
 
 ## 2. 发布前准备
 
-- 确认版本号、README、包内 `QUICK_START.txt`、安装器显示和文件名均为 `1.0.1`。
+- 确认版本号、README、包内 `QUICK_START.txt`、安装器显示和文件名均为 `1.0.2`。
 - 确认项目仍采用 `GPL-3.0-only`，根目录 `LICENSE`、`COPYRIGHT` 和 `THIRD_PARTY_NOTICES.md` 完整存在。
 - 按 `SOURCE_AVAILABILITY.md` 确认标签公开完整补丁源码。第三方锁定源码若与上一发布基线散列相同，引用该基线 Release，不要重复上传。
 - 使用干净的 Python 3.12 虚拟环境安装 `requirements-lock.txt`，编译并测试 `native\` 中的 x86 组件。
@@ -26,19 +26,19 @@
 构建虚拟环境必须位于纯英文路径；项目源码目录可以包含中文：
 
 ```powershell
-$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.1'
+$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.2'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 1.0.1 -Python "$buildVenv\Scripts\python.exe" `
+.\build_release.ps1 -Version 1.0.2 -Python "$buildVenv\Scripts\python.exe" `
   -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
 ```
 
 应生成或准备好：
 
 ```text
-release\RenpyThiefPatch-v1.0.1-portable-x64\
-release\RenpyThiefPatch-v1.0.1-portable-x64.zip
-release\RenpyThiefPatch-v1.0.1-setup-x64.exe
+release\RenpyThiefPatch-v1.0.2-portable-x64\
+release\RenpyThiefPatch-v1.0.2-portable-x64.zip
+release\RenpyThiefPatch-v1.0.2-setup-x64.exe
 release\SHA256SUMS.txt
 ```
 
@@ -65,15 +65,15 @@ release\SHA256SUMS.txt
 先测试便携版：
 
 ```powershell
-.\release\RenpyThiefPatch-v1.0.1-portable-x64\RenpyThiefPatch.exe --smoke-test
-.\release\RenpyThiefPatch-v1.0.1-portable-x64\router\translate_bridge.exe --help
+.\release\RenpyThiefPatch-v1.0.2-portable-x64\RenpyThiefPatch.exe --smoke-test
+.\release\RenpyThiefPatch-v1.0.2-portable-x64\router\translate_bridge.exe --help
 ```
 
 上面的 `build_release.ps1 -PublicRelease` 已经使用 Inno Setup 6.7.3 构建安装器。仅在调试安装器或便携目录未变化时，才单独运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1 `
-  -SourceDirectory .\release\RenpyThiefPatch-v1.0.1-portable-x64 `
+  -SourceDirectory .\release\RenpyThiefPatch-v1.0.2-portable-x64 `
   -OutputDirectory .\release
 ```
 
@@ -91,7 +91,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps
 
 ```powershell
 .\scripts\preflight_release.ps1 `
-  -Version 1.0.1 `
+  -Version 1.0.2 `
   -Python "$buildVenv\Scripts\python.exe"
 ```
 
@@ -99,35 +99,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps
 
 ## 5. 提交、标签与 GitHub Release
 
-先提交 v1.0.1 修改并推送 `main`，确认工作树干净、CI 通过，再检查和标记该提交：
+先提交 v1.0.2 修改并推送 `main`，确认工作树干净、CI 通过，再检查和标记该提交：
 
 ```powershell
 git status --short
 git diff --check
 git log -1 --show-signature
-git tag -a v1.0.1 -m "v1.0.1"
-git push origin v1.0.1
+git tag -a v1.0.2 -m "v1.0.2"
+git push origin v1.0.2
 ```
 
 不要覆盖、移动或重新使用已经发布的标签。若标签后发现构建错误，应修复后使用新版本号。
 
 在 GitHub Release 页面：
 
-1. 选择标签 `v1.0.1`，标题填写 `v1.0.1 — 修复经补丁启动时 Qt 平台插件初始化失败`。
+1. 选择标签 `v1.0.2`，标题填写 `v1.0.2 — 全新原版可走我的 API，并支持三个自定义提示词`。
 2. 以 `RELEASE_NOTES.md` 为说明；确认折叠前即可看到“普通用户请下载这里”和两个准确文件名。
 3. 上传安装器、便携 ZIP、`SHA256SUMS.txt`。第三方源码散列未变时只上传 `THIRD_PARTY_SOURCE_REFERENCE.txt`，指向 v0.1.2；不要再传 Qt/PyQt5/MinHook/Python 归档。
-4. v1.0.1 作为正式版发布，不要勾选 **Pre-release**。
+4. v1.0.2 作为正式版发布，不要勾选 **Pre-release**。
 5. 发布前检查附件名、大小和散列，尤其不能把本机 RenpyThief、用户 API 凭据或内部 ZIP 误传。
 
 GitHub CLI 示例：
 
 ```powershell
-gh release create v1.0.1 `
-  .\release\RenpyThiefPatch-v1.0.1-setup-x64.exe `
-  .\release\RenpyThiefPatch-v1.0.1-portable-x64.zip `
+gh release create v1.0.2 `
+  .\release\RenpyThiefPatch-v1.0.2-setup-x64.exe `
+  .\release\RenpyThiefPatch-v1.0.2-portable-x64.zip `
   .\release\SHA256SUMS.txt `
   .\release\THIRD_PARTY_SOURCE_REFERENCE.txt `
-  --title "v1.0.1 — 修复经补丁启动时 Qt 平台插件初始化失败" `
+  --title "v1.0.2 — 全新原版可走我的 API，并支持三个自定义提示词" `
   --notes-file .\RELEASE_NOTES.md
 ```
 

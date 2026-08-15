@@ -19,6 +19,9 @@ class PromptMode(str, Enum):
     TEMPLATE1 = "template1"
     TEMPLATE2 = "template2"
     CUSTOM = "custom"
+    CUSTOM1 = "custom1"
+    CUSTOM2 = "custom2"
+    CUSTOM3 = "custom3"
 
 
 class ProviderCategory(str, Enum):
@@ -36,7 +39,7 @@ class ProviderId(str, Enum):
     MICROSOFT = "microsoft"
 
 
-SETTINGS_SCHEMA_VERSION = 2
+SETTINGS_SCHEMA_VERSION = 3
 DEFAULT_CUSTOM_PROMPT = (
     "You are a precise game localization translator.\n\n"
     "Translate the following text from {source} to {target}. "
@@ -44,6 +47,18 @@ DEFAULT_CUSTOM_PROMPT = (
     "line breaks, placeholders, and markup.\n\n"
     "{text}"
 )
+CUSTOM_PROMPT_MODES = frozenset(
+    {
+        PromptMode.CUSTOM1.value,
+        PromptMode.CUSTOM2.value,
+        PromptMode.CUSTOM3.value,
+    }
+)
+
+
+def _normalized_prompt(value: Any) -> str:
+    text = str(value or "")
+    return text if text.strip() else DEFAULT_CUSTOM_PROMPT
 
 
 @dataclass(slots=True)
@@ -56,7 +71,9 @@ class AppSettings:
     model: str = "deepseek-v4-flash"
     quality: str = QualityMode.FAST.value
     prompt_mode: str = PromptMode.TEMPLATE1.value
-    custom_prompt: str = DEFAULT_CUSTOM_PROMPT
+    custom_prompt_1: str = DEFAULT_CUSTOM_PROMPT
+    custom_prompt_2: str = DEFAULT_CUSTOM_PROMPT
+    custom_prompt_3: str = DEFAULT_CUSTOM_PROMPT
     block_updates: bool = True
     remember_api_key: bool = False
     bridge_concurrency: int = 64
@@ -71,7 +88,13 @@ class AppSettings:
     def from_dict(cls, value: Any) -> "AppSettings":
         if not isinstance(value, dict):
             return cls()
-        known = {field: value[field] for field in cls.__dataclass_fields__ if field in value}
+        known = {
+            field: value[field]
+            for field in cls.__dataclass_fields__
+            if field in value
+        }
+        if "custom_prompt_1" not in known and "custom_prompt" in value:
+            known["custom_prompt_1"] = value["custom_prompt"]
         settings = cls(**known)
         settings.normalize()
         return settings
@@ -87,6 +110,8 @@ class AppSettings:
             self.provider = ProviderId.DEEPSEEK.value
         if self.quality not in {item.value for item in QualityMode}:
             self.quality = QualityMode.FAST.value
+        if self.prompt_mode == PromptMode.CUSTOM.value:
+            self.prompt_mode = PromptMode.CUSTOM1.value
         if self.prompt_mode not in {item.value for item in PromptMode}:
             self.prompt_mode = PromptMode.TEMPLATE1.value
         if not isinstance(self.block_updates, bool):
@@ -100,10 +125,18 @@ class AppSettings:
         self.translator_path = str(self.translator_path or "").strip()
         self.base_url = str(self.base_url or "").strip()
         self.model = str(self.model or "").strip()
-        custom_prompt = str(self.custom_prompt or "")
-        self.custom_prompt = (
-            custom_prompt if custom_prompt.strip() else DEFAULT_CUSTOM_PROMPT
-        )
+        self.custom_prompt_1 = _normalized_prompt(self.custom_prompt_1)
+        self.custom_prompt_2 = _normalized_prompt(self.custom_prompt_2)
+        self.custom_prompt_3 = _normalized_prompt(self.custom_prompt_3)
+
+    def selected_custom_prompt(self) -> str:
+        if self.prompt_mode == PromptMode.CUSTOM2.value:
+            return self.custom_prompt_2
+        if self.prompt_mode == PromptMode.CUSTOM3.value:
+            return self.custom_prompt_3
+        if self.prompt_mode == PromptMode.CUSTOM1.value:
+            return self.custom_prompt_1
+        return ""
 
 
 @dataclass(frozen=True, slots=True)

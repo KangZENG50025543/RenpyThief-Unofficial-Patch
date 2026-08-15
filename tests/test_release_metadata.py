@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 PORTABLE_NAME = f"RenpyThiefPatch-v{VERSION}-portable-x64"
 INSTALLER_NAME = f"RenpyThiefPatch-v{VERSION}-setup-x64.exe"
 
@@ -22,7 +22,7 @@ class ReleaseMetadataTests(unittest.TestCase):
 
     def test_build_script_uses_public_asset_names(self):
         source = (ROOT / "build_release.ps1").read_text(encoding="utf-8-sig")
-        self.assertIn("[string]$Version = '1.0.1'", source)
+        self.assertIn("[string]$Version = '1.0.2'", source)
         self.assertIn('"RenpyThiefPatch-v$Version-portable-x64"', source)
         self.assertIn('"RenpyThiefPatch-v$Version-setup-x64.exe"', source)
         self.assertIn("packaging\\QUICK_START.txt", source)

@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from .models import (
     AppSettings,
+    CUSTOM_PROMPT_MODES,
     LaunchProfile,
     ProviderCategory,
     ProviderId,
@@ -246,13 +247,14 @@ def build_connection_test_payload(
 
     source = "ja"
     target = "zh"
-    if settings.prompt_mode == "custom":
+    custom_prompt = settings.selected_custom_prompt()
+    if settings.prompt_mode in CUSTOM_PROMPT_MODES:
         rendered = (
-            settings.custom_prompt.replace("{source}", source)
+            custom_prompt.replace("{source}", source)
             .replace("{target}", target)
             .replace("{text}", sample)
         )
-        if "{text}" not in settings.custom_prompt:
+        if "{text}" not in custom_prompt:
             rendered += "\n\n" + sample
         messages = [{"role": "user", "content": rendered}]
     elif settings.prompt_mode == "template2":

@@ -28,14 +28,14 @@
 
 | 下载文件 | 适合谁 | 如何使用 |
 |---|---|---|
-| `RenpyThiefPatch-v1.0.1-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
-| `RenpyThiefPatch-v1.0.1-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
+| `RenpyThiefPatch-v1.0.2-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
+| `RenpyThiefPatch-v1.0.2-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
 
 两种版本功能相同，均已包含 GUI、翻译 Bridge 和所需程序组件，不需要另外安装 Python。它们都**不包含 RenpyThief**；请自行合法取得目前受支持的 RenpyThief 6.7.8 x86。
 
 ### 安装版（推荐）
 
-1. 打开最新的 GitHub Release，下载 `RenpyThiefPatch-v1.0.1-setup-x64.exe`。
+1. 打开最新的 GitHub Release，下载 `RenpyThiefPatch-v1.0.2-setup-x64.exe`。
 2. 可同时下载 `SHA256SUMS.txt`，按下方命令核对文件完整性。
 3. 关闭游戏、RenpyThief 和旧版补丁，再运行安装器。
 4. 按安装向导完成安装。开始菜单快捷方式会自动创建；“创建桌面快捷方式”默认勾选，可按需取消。
@@ -45,7 +45,7 @@
 
 ### 便携版
 
-1. 下载 `RenpyThiefPatch-v1.0.1-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
+1. 下载 `RenpyThiefPatch-v1.0.2-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
 2. 将 ZIP **完整解压**到当前用户可写的独立目录，例如 `D:\Tools\RenpyThiefPatch`。
 3. 先阅读包内 `QUICK_START.txt`，再运行 `RenpyThiefPatch.exe`；也可以双击 `LaunchPatch.cmd`。
 
@@ -54,8 +54,8 @@
 校验 SHA-256：
 
 ```powershell
-(Get-FileHash .\RenpyThiefPatch-v1.0.1-setup-x64.exe -Algorithm SHA256).Hash
-(Get-FileHash .\RenpyThiefPatch-v1.0.1-portable-x64.zip -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.0.2-setup-x64.exe -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.0.2-portable-x64.zip -Algorithm SHA256).Hash
 ```
 
 将输出与同一 Release 中 `SHA256SUMS.txt` 对应文件名的值比较；不一致时不要运行或安装。
@@ -127,13 +127,13 @@ API Key 必须从对应平台的官方控制台自行申请。本项目不提供
 
 ## AI 提示词
 
-AI Provider 支持三种提示词模式：
+AI Provider 支持两种内置模板，以及三个可分别保存的自定义槽位：
 
 - 模板 1：简洁、直接，尽量保持原文结构。
 - 模板 2：更偏向自然的游戏本地化。
-- 自定义：自行编辑完整提示词。
+- 自定义 1 / 2 / 3：自行编辑完整提示词，切换时分别保存。
 
-自定义框默认显示模板 1，支持以下占位符：
+自定义框支持以下占位符：
 
 - `{source}`：源语言。
 - `{target}`：目标语言。
@@ -155,7 +155,7 @@ AI Provider 支持三种提示词模式：
 - 保证任意未来版本都自动兼容。
 - 修改系统代理、hosts、防火墙或证书。
 
-「我的 API」且兼容性保护开启时，同一套钩子还会本地应答已知会话接口，并拒绝已知游戏配置/补齐下载；翻译仍只走用户选择的 Bridge。这不是官方额度模式的行为。
+「我的 API」且兼容性保护开启时，同一套钩子还会本地应答已知会话接口，并拒绝已知游戏配置/补齐下载；若原版目录还没有登录记录，启动前会写入仅用于本机的会话标记。翻译仍只走用户选择的 Bridge。这不是官方额度模式的行为。
 
 如果保护组件加载、注入或钩子初始化失败，受保护启动仍会中止。若钩子已经就绪、RenpyThief 仍在运行，但 20 秒内没有观察到已知版本检查，补丁会显示“更新保护未确认”警告并继续启动；钩子仍会拦截之后出现的已知版本接口。此时不要把警告理解为保护成功，未来版本或未知更新接口仍可能不兼容。
 
@@ -215,7 +215,9 @@ AI Provider 支持三种提示词模式：
 
 ### 为什么仍然出现登录页面？
 
-这是预期行为。本补丁保留原版登录和授权流程。未满足原版登录条件时，RenpyThief 仍可能拒绝拖入游戏或停止后续注入。
+官方免费额度模式会保留原版登录。未完成原版登录时，RenpyThief 仍可能拒绝拖入游戏。
+
+「我的 API」且兼容性保护开启时，补丁会本地应答已知会话接口；若原版目录的登录记录为空，还会写入一份本机会话标记，不覆盖已有记录。这不是官方账号，也不能用来领取官方额度。若仍弹出登录页，请确认选的是「我的 API」且兼容性保护已开启。
 
 ### 为什么一定要等待“已就绪，可以拖入游戏”？
 
@@ -225,7 +227,7 @@ AI Provider 支持三种提示词模式：
 
 ### 弹出 “no Qt platform plugin could be initialized” 怎么办？
 
-这是 v1.0.0 及更早安装版/便携包的已知问题：64 位补丁界面的 Qt 插件路径会传给 32 位原版 RenpyThief。单独双击原版可以启动、经补丁启动失败时，请改用 **v1.0.1**。不要把其他 Qt 运行库拷进原版目录来“修复”。
+这是 v1.0.0 及更早安装版/便携包的已知问题：64 位补丁界面的 Qt 插件路径会传给 32 位原版 RenpyThief。单独双击原版可以启动、经补丁启动失败时，请改用 **v1.0.2 或更新版本**。不要把其他 Qt 运行库拷进原版目录来“修复”。
 
 ### “测试 API”失败怎么办？
 
@@ -268,7 +270,7 @@ GUI 启动流程不会把凭据写入设置文件、日志或命令行。凭据�
 ## 已知限制
 
 - 目前仅实测 RenpyThief 6.7.8 x86。
-- 仍依赖原版登录、引擎识别、游戏资源部署和注入流程。
+- 官方免费额度仍依赖原版登录、引擎识别、游戏资源部署和注入流程。
 - 不支持运行中切换线路。
 - 不自动检测官方额度耗尽。
 - 不自动回退到其他 Provider。
@@ -307,28 +309,28 @@ python -m unittest discover -s tests -v
 先准备好 `router\` 中的四个原生运行文件。由于 PyInstaller 的 Qt 收集逻辑在部分版本中不能正确处理含中文的虚拟环境路径，**发布构建用的 venv 必须放在纯英文路径**：
 
 ```powershell
-$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.1'
+$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.2'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 1.0.1 -Python "$buildVenv\Scripts\python.exe"
+.\build_release.ps1 -Version 1.0.2 -Python "$buildVenv\Scripts\python.exe"
 ```
 
 不加 `-PublicRelease` 时，脚本只生成便携目录、便携 ZIP 和仅含便携 ZIP 的校验文件：
 
 ```text
-release\RenpyThiefPatch-v1.0.1-portable-x64\
-release\RenpyThiefPatch-v1.0.1-portable-x64.zip
+release\RenpyThiefPatch-v1.0.2-portable-x64\
+release\RenpyThiefPatch-v1.0.2-portable-x64.zip
 release\SHA256SUMS.txt
 ```
 
 正式公开发布时应使用 `-PublicRelease`；它会继续调用 Inno Setup 6.7.3 生成安装器，并让 `SHA256SUMS.txt` 同时覆盖安装器和便携 ZIP。如果缺少许可证文件、安装器定义或编译器，脚本会拒绝生成公开发布资产：
 
 ```powershell
-.\build_release.ps1 -Version 1.0.1 -Python "$buildVenv\Scripts\python.exe" `
+.\build_release.ps1 -Version 1.0.2 -Python "$buildVenv\Scripts\python.exe" `
   -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
 ```
 
-正式构建最终应再包含 `release\RenpyThiefPatch-v1.0.1-setup-x64.exe`。
+正式构建最终应再包含 `release\RenpyThiefPatch-v1.0.2-setup-x64.exe`。
 
 建议在干净虚拟环境中构建，并记录最终依赖版本。`build\`、`dist\`、`release\` 和原生二进制不应提交进 Git 历史。
 

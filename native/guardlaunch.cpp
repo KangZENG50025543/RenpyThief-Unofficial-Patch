@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "guardlaunch_policy.h"
+#include "session_compat_policy.h"
 
 namespace {
 
@@ -117,6 +118,57 @@ bool IsLockConfiguration(const std::wstring& dllPath)
     return _wcsicmp(mode, L"lock") == 0 && version[0] != L'\0';
 }
 
+bool IsSessionCompatLock(const std::wstring& dllPath)
+{
+    const std::wstring ini = ParentDirectory(dllPath) +
+                             L"\\versionguard.ini";
+    wchar_t value[32]{};
+    GetPrivateProfileStringW(L"versionguard", L"session_compat", L"observe",
+                             value, static_cast<DWORD>(_countof(value)),
+                             ini.c_str());
+    return _wcsicmp(value, L"lock") == 0;
+}
+
+bool EnsureLocalSessionRecord(const std::wstring& translatorPath)
+{
+    const std::wstring path = ParentDirectory(translatorPath) + L"\\user";
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    const bool exists =
+        GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info) != 0;
+    ULARGE_INTEGER size{};
+    if (exists) {
+        size.HighPart = info.nFileSizeHigh;
+        size.LowPart = info.nFileSizeLow;
+    }
+    const bool isDirectory =
+        exists && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+    const bool isReparse =
+        exists && (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
+    if (!ShouldWriteLocalSessionRecord(exists, isDirectory, isReparse,
+                                       size.QuadPart)) {
+        return true;
+    }
+
+    const std::string body = LocalSessionRecordText();
+    HANDLE file = CreateFileW(
+        path.c_str(), GENERIC_WRITE, 0, nullptr,
+        exists ? TRUNCATE_EXISTING : CREATE_NEW, FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    const BOOL ok =
+        WriteFile(file, body.data(), static_cast<DWORD>(body.size()),
+                  &written, nullptr) &&
+        written == body.size();
+    const DWORD writeError = GetLastError();
+    CloseHandle(file);
+    if (!ok) {
+        SetLastError(writeError);
+        return false;
+    }
+    return true;
+}
+
 bool InjectDll(HANDLE process, const std::wstring& dllPath, DWORD& error)
 {
     error = ERROR_SUCCESS;
@@ -217,6 +269,13 @@ int wmain(int argc, wchar_t** argv)
                       L"refusing guarded launch: versionguard.dll and a "
                       L"lock-mode versionguard.ini are required\n");
         return 4;
+    }
+    if (IsSessionCompatLock(guard) && !EnsureLocalSessionRecord(translator)) {
+        std::fwprintf(stderr,
+                      L"could not create a local-only session marker next to "
+                      L"RenpyThief.exe (error=%lu)\n",
+                      GetLastError());
+        return 8;
     }
 
     std::vector<wchar_t> environment;

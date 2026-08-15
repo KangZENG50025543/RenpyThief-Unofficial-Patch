@@ -101,7 +101,9 @@ class SettingsTests(unittest.TestCase):
             settings = SettingsStore(path).load()
             self.assertEqual(settings.schema_version, SETTINGS_SCHEMA_VERSION)
             self.assertEqual(settings.prompt_mode, PromptMode.TEMPLATE1.value)
-            self.assertEqual(settings.custom_prompt, DEFAULT_CUSTOM_PROMPT)
+            self.assertEqual(settings.custom_prompt_1, DEFAULT_CUSTOM_PROMPT)
+            self.assertEqual(settings.custom_prompt_2, DEFAULT_CUSTOM_PROMPT)
+            self.assertEqual(settings.custom_prompt_3, DEFAULT_CUSTOM_PROMPT)
             self.assertTrue(settings.block_updates)
 
     def test_prompt_and_update_preferences_round_trip(self) -> None:
@@ -109,15 +111,38 @@ class SettingsTests(unittest.TestCase):
             path = Path(directory) / "settings.json"
             store = SettingsStore(path)
             source = AppSettings(
-                prompt_mode=PromptMode.CUSTOM.value,
-                custom_prompt="Translate {text} from {source} to {target}.",
+                prompt_mode=PromptMode.CUSTOM2.value,
+                custom_prompt_1="Translate {text} from {source} to {target}.",
+                custom_prompt_2="只翻译：{text}",
+                custom_prompt_3="游戏本地化：{text}",
                 block_updates=False,
             )
             store.save(source)
             loaded = store.load()
-            self.assertEqual(loaded.prompt_mode, PromptMode.CUSTOM.value)
-            self.assertEqual(loaded.custom_prompt, source.custom_prompt)
+            self.assertEqual(loaded.prompt_mode, PromptMode.CUSTOM2.value)
+            self.assertEqual(loaded.custom_prompt_1, source.custom_prompt_1)
+            self.assertEqual(loaded.custom_prompt_2, source.custom_prompt_2)
+            self.assertEqual(loaded.custom_prompt_3, source.custom_prompt_3)
+            self.assertEqual(loaded.selected_custom_prompt(), "只翻译：{text}")
             self.assertFalse(loaded.block_updates)
+
+    def test_legacy_custom_prompt_migrates_to_first_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "prompt_mode": "custom",
+                        "custom_prompt": "旧自定义：{text}",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            settings = SettingsStore(path).load()
+            self.assertEqual(settings.prompt_mode, PromptMode.CUSTOM1.value)
+            self.assertEqual(settings.custom_prompt_1, "旧自定义：{text}")
+            self.assertEqual(settings.selected_custom_prompt(), "旧自定义：{text}")
 
 
 class ProviderTests(unittest.TestCase):
@@ -207,8 +232,8 @@ class BridgeEnvironmentTests(unittest.TestCase):
     def test_ai_prompt_and_key_use_environment_not_settings(self) -> None:
         settings = AppSettings(
             mode="custom",
-            prompt_mode=PromptMode.CUSTOM.value,
-            custom_prompt="只翻译：{text}",
+            prompt_mode=PromptMode.CUSTOM3.value,
+            custom_prompt_3="只翻译：{text}",
         )
         environment = _custom_bridge_environment(settings, {"api_key": "test-api-key"})
         self.assertEqual(environment["UPSTREAM_API_KEY"], "test-api-key")

@@ -35,6 +35,8 @@ from .credentials import CredentialError, CredentialStore
 from .launcher import LaunchEvent, LaunchEventKind, PatchLauncher
 from .models import (
     AppSettings,
+    CUSTOM_PROMPT_MODES,
+    DEFAULT_CUSTOM_PROMPT,
     PromptMode,
     ProviderCategory,
     ProviderId,
@@ -72,6 +74,13 @@ class MainWindow(QMainWindow):
         self._close_after_stop = False
         self._current_provider_id = ""
         self._credential_cache: dict[str, dict[str, str]] = {}
+        self._custom_prompt_slots = {
+            PromptMode.CUSTOM1.value: DEFAULT_CUSTOM_PROMPT,
+            PromptMode.CUSTOM2.value: DEFAULT_CUSTOM_PROMPT,
+            PromptMode.CUSTOM3.value: DEFAULT_CUSTOM_PROMPT,
+        }
+        self._active_custom_slot: str | None = None
+        self._prompt_ui_ready = False
 
         self.setWindowTitle(f"RenpyThief 非官方翻译补丁 · {__version__}")
         self.setMinimumSize(640, 600)
@@ -205,9 +214,11 @@ class MainWindow(QMainWindow):
         self.prompt_combo = QComboBox()
         self.prompt_combo.addItem("模板 1 · 简洁直译", PromptMode.TEMPLATE1.value)
         self.prompt_combo.addItem("模板 2 · 游戏本地化", PromptMode.TEMPLATE2.value)
-        self.prompt_combo.addItem("自定义", PromptMode.CUSTOM.value)
+        self.prompt_combo.addItem("自定义 1", PromptMode.CUSTOM1.value)
+        self.prompt_combo.addItem("自定义 2", PromptMode.CUSTOM2.value)
+        self.prompt_combo.addItem("自定义 3", PromptMode.CUSTOM3.value)
         self.prompt_combo.currentIndexChanged.connect(self._update_prompt_ui)
-        self.custom_prompt_label = QLabel("自定义内容")
+        self.custom_prompt_label = QLabel("自定义 1 内容")
         self.custom_prompt_edit = QTextEdit()
         self.custom_prompt_edit.setAcceptRichText(False)
         self.custom_prompt_edit.setMinimumHeight(110)
@@ -215,7 +226,7 @@ class MainWindow(QMainWindow):
             "可使用 {source}、{target}、{text}。如果省略 {text}，系统会自动追加原文。"
         )
         prompt_help = QLabel(
-            "模板由补丁维护；自定义提示词支持 {source}、{target} 和 {text} 占位符。"
+            "模板由补丁维护；三个自定义槽位会分别保存。支持 {source}、{target} 和 {text}。"
         )
         prompt_help.setObjectName("helpText")
         prompt_help.setWordWrap(True)
@@ -230,7 +241,8 @@ class MainWindow(QMainWindow):
         self.block_updates_checkbox.clicked.connect(self._block_updates_clicked)
         update_help = QLabel(
             "默认开启。拦截已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报，"
-            "并拒绝官方游戏配置下载。不会覆盖 RenpyThief.exe。"
+            "并在原版目录缺少登录记录时写入仅用于本机的会话标记，同时拒绝官方游戏配置下载。"
+            "不会覆盖已有登录记录，也不会覆盖 RenpyThief.exe。"
         )
         update_help.setObjectName("helpText")
         update_help.setWordWrap(True)
@@ -350,8 +362,16 @@ class MainWindow(QMainWindow):
         quality_index = self.quality_combo.findData(settings.quality)
         self.quality_combo.setCurrentIndex(max(0, quality_index))
         prompt_index = self.prompt_combo.findData(settings.prompt_mode)
+        self._prompt_ui_ready = False
+        self._custom_prompt_slots = {
+            PromptMode.CUSTOM1.value: settings.custom_prompt_1,
+            PromptMode.CUSTOM2.value: settings.custom_prompt_2,
+            PromptMode.CUSTOM3.value: settings.custom_prompt_3,
+        }
+        self._active_custom_slot = None
         self.prompt_combo.setCurrentIndex(max(0, prompt_index))
-        self.custom_prompt_edit.setPlainText(settings.custom_prompt)
+        self._prompt_ui_ready = True
+        self._update_prompt_ui()
         self.block_updates_checkbox.setChecked(settings.block_updates)
         self.remember_key.setChecked(settings.remember_api_key)
         self.bridge_concurrency.setValue(settings.bridge_concurrency)
@@ -369,6 +389,7 @@ class MainWindow(QMainWindow):
             if self.custom_radio.isChecked()
             else TranslationMode.OFFICIAL.value
         )
+        self._store_active_custom_prompt()
         value = AppSettings(
             translator_path=self.translator_path.text().strip(),
             mode=mode,
@@ -377,7 +398,9 @@ class MainWindow(QMainWindow):
             model=self.model_edit.text().strip(),
             quality=str(self.quality_combo.currentData()),
             prompt_mode=str(self.prompt_combo.currentData()),
-            custom_prompt=self.custom_prompt_edit.toPlainText(),
+            custom_prompt_1=self._custom_prompt_slots[PromptMode.CUSTOM1.value],
+            custom_prompt_2=self._custom_prompt_slots[PromptMode.CUSTOM2.value],
+            custom_prompt_3=self._custom_prompt_slots[PromptMode.CUSTOM3.value],
             block_updates=self.block_updates_checkbox.isChecked(),
             remember_api_key=self.remember_key.isChecked(),
             bridge_concurrency=self.bridge_concurrency.value(),
@@ -392,8 +415,8 @@ class MainWindow(QMainWindow):
             provider = get_provider(value.provider)
             if (
                 provider.category is ProviderCategory.AI
-                and value.prompt_mode == PromptMode.CUSTOM.value
-                and not value.custom_prompt.strip()
+                and value.prompt_mode in CUSTOM_PROMPT_MODES
+                and not value.selected_custom_prompt().strip()
             ):
                 raise ValueError("自定义提示词不能为空。")
             make_launch_profile(value)
@@ -539,6 +562,12 @@ class MainWindow(QMainWindow):
         self._credential_cache[provider.provider_id.value] = values
         return values
 
+    def _store_active_custom_prompt(self) -> None:
+        if self._active_custom_slot and hasattr(self, "custom_prompt_edit"):
+            self._custom_prompt_slots[self._active_custom_slot] = (
+                self.custom_prompt_edit.toPlainText()
+            )
+
     def _update_prompt_ui(self) -> None:
         if not hasattr(self, "prompt_group"):
             return
@@ -548,9 +577,21 @@ class MainWindow(QMainWindow):
             and provider.category is ProviderCategory.AI
         )
         self.prompt_group.setVisible(visible)
-        custom = str(self.prompt_combo.currentData()) == PromptMode.CUSTOM.value
+        mode = str(self.prompt_combo.currentData() or "")
+        if self._prompt_ui_ready:
+            self._store_active_custom_prompt()
+        custom = mode in CUSTOM_PROMPT_MODES
         self.custom_prompt_label.setVisible(custom)
         self.custom_prompt_edit.setVisible(custom)
+        if custom:
+            slot = {"custom1": "1", "custom2": "2", "custom3": "3"}.get(mode, "1")
+            self.custom_prompt_label.setText(f"自定义 {slot} 内容")
+            self.custom_prompt_edit.setPlainText(
+                self._custom_prompt_slots.get(mode, DEFAULT_CUSTOM_PROMPT)
+            )
+            self._active_custom_slot = mode
+        else:
+            self._active_custom_slot = None
         self.prompt_group.setEnabled(visible and not self.launcher.running)
 
     def _block_updates_clicked(self, checked: bool) -> None:

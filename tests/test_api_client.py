@@ -42,8 +42,8 @@ class ApiClientTests(unittest.TestCase):
     def test_custom_prompt_is_used_by_ai_connection_test(self) -> None:
         settings = AppSettings(
             mode="custom",
-            prompt_mode=PromptMode.CUSTOM.value,
-            custom_prompt="从{source}到{target}：{text}",
+            prompt_mode=PromptMode.CUSTOM1.value,
+            custom_prompt_1="从{source}到{target}：{text}",
         )
         payload = build_connection_test_payload(settings, "原文")
         self.assertEqual(

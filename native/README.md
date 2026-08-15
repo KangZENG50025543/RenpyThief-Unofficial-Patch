@@ -35,7 +35,7 @@
 .\native\build\x86\guardlaunch_policy_test.exe
 ```
 
-`versionguard.ini` 默认 `session_compat=observe`、`config_compat=pass`，供官方额度模式只保护版本检查。「我的 API」启动器会写入隔离副本：`session_compat=lock`、`config_compat=deny`。不要同时加载第二套 Qt NAM 钩子。
+`versionguard.ini` 默认 `session_compat=observe`、`config_compat=pass`，供官方额度模式只保护版本检查。「我的 API」启动器会写入隔离副本：`session_compat=lock`、`config_compat=deny`。此时 `guardlaunch` 会在原版 `user` 文件缺失或为空时写入本机会话标记，不会覆盖已有登录记录。不要同时加载第二套 Qt NAM 钩子。
 
 `guardlaunch` 启动 32 位 `RenpyThief.exe` 时会丢掉父进程的 `QT_*` / `QML*` 环境变量。64 位补丁 GUI（PyQt5 / PyInstaller）会设置自己的插件目录；若这些变量漏进原版进程，Qt 会找不到可用的 `windows` 平台插件，三连端口也就不会出现。
 

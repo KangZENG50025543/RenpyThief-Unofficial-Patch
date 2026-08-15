@@ -63,7 +63,9 @@ config_compat=deny
 - `submitInject`
 - `submitEndGame`
 
-合成 JSON 只使用固定字段名和本地 EXE 文件版本；若原版目录存在 `user` 文件，仅读取 `username=` 且必须是安全 ASCII token。日志只写 `username_present=true/false`，不写用户名、口令或 Cookie。
+合成 JSON 只使用固定字段名和本地 EXE 文件版本；若原版目录存在非空 `user` 文件，仅读取 `username=` 且必须是安全 ASCII token。日志只写 `username_present=true/false`，不写用户名、口令或 Cookie。
+
+`session_compat=lock` 时，`guardlaunch` 若发现原版目录中的 `user` **不存在或大小为 0**，会在启动前写入一份仅用于本机的会话标记，让全新安装也能通过原版拖入闸门。已有非空 `user` 文件不会被覆盖；官方额度模式（`session_compat=observe`）不会写入。该标记不是官方账号，不能用来领取官方额度。
 
 `config_compat=deny` 时，已知游戏配置/补齐接口（如 `getGameConfig`、`getUnityHook`、`getV8`）在同一钩子内失败关闭，避免官方配置下载。未知官方路径保持透传，不做猜测。
 
