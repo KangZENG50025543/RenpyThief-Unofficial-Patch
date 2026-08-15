@@ -15,8 +15,7 @@
 
 - 确认版本号、README、包内 `QUICK_START.txt`、安装器显示和文件名均为 `1.0.0`。
 - 确认项目仍采用 `GPL-3.0-only`，根目录 `LICENSE`、`COPYRIGHT` 和 `THIRD_PARTY_NOTICES.md` 完整存在。
-- 按 `SOURCE_AVAILABILITY.md` 确认标签公开完整补丁源码，并落实 Qt、PyQt 等第三方组件的精确对应源码。
-- 运行 `scripts\prepare_release_sources.ps1` 下载四个锁定源码归档，再以 `-VerifyOnly` 复核。
+- 按 `SOURCE_AVAILABILITY.md` 确认标签公开完整补丁源码。第三方锁定源码若与上一发布基线散列相同，引用该基线 Release，不要重复上传。
 - 使用干净的 Python 3.12 虚拟环境安装 `requirements-lock.txt`，编译并测试 `native\` 中的 x86 组件。
 - 确认 README 声明的 RenpyThief 支持范围与实际测试一致。
 - 确认仓库、安装版和便携版中没有 API Key、用户数据、原版程序、游戏文件、PDB、抓包、分析日志或游戏正文日志。
@@ -41,23 +40,9 @@ release\RenpyThiefPatch-v1.0.0-portable-x64\
 release\RenpyThiefPatch-v1.0.0-portable-x64.zip
 release\RenpyThiefPatch-v1.0.0-setup-x64.exe
 release\SHA256SUMS.txt
-release\source-assets-v1.0.0\PyQt5-5.15.11.tar.gz
-release\source-assets-v1.0.0\qt-everywhere-src-5.15.2.tar.xz
-release\source-assets-v1.0.0\MinHook-1.3.4-c3fcafdc10146beb5919319d0683e44e3c30d537.zip
-release\source-assets-v1.0.0\Python-3.12.7.tar.xz
-release\source-assets-v1.0.0\SOURCE_ARCHIVES.SHA256
 ```
 
-准备并复核第三方对应源码附件：
-
-```powershell
-.\scripts\prepare_release_sources.ps1 -Version 1.0.0 `
-  -OutputDirectory .\release\source-assets-v1.0.0
-.\scripts\prepare_release_sources.ps1 -Version 1.0.0 `
-  -OutputDirectory .\release\source-assets-v1.0.0 -VerifyOnly
-```
-
-依赖版本没有变化时可以复用已验证且散列完全相同的第三方源码字节，但仍须在 v1.0.0 目录执行 `-VerifyOnly`；不得复用旧版补丁 EXE、安装器或 ZIP。
+第三方对应源码：清单散列与 **v0.1.2** 相同时，不要再上传那四个归档。本地可用上一版已校验副本做 `-VerifyOnly`；GitHub Release 只附 `THIRD_PARTY_SOURCE_REFERENCE.txt`，指向 v0.1.2 附件和上游 URL。仅当 `THIRD_PARTY_SOURCE_MANIFEST.txt` 的 SHA-256 或文件名变化时，才重新下载、校验并上传新归档。不得复用旧版补丁 EXE、安装器或 ZIP。
 
 ## 4. 包内容与冒烟测试
 
@@ -130,9 +115,9 @@ git push origin v1.0.0
 
 1. 选择标签 `v1.0.0`，标题填写 `v1.0.0 — 我的 API 可走本机模型，并在本地完成会话`。
 2. 以 `RELEASE_NOTES.md` 为说明；确认折叠前即可看到“普通用户请下载这里”和两个准确文件名。
-3. 上传安装器、便携 ZIP、`SHA256SUMS.txt`、四个锁定第三方源码归档和 `SOURCE_ARCHIVES.SHA256`。
+3. 上传安装器、便携 ZIP、`SHA256SUMS.txt`。第三方源码散列未变时只上传 `THIRD_PARTY_SOURCE_REFERENCE.txt`，指向 v0.1.2；不要再传 Qt/PyQt5/MinHook/Python 归档。
 4. v1.0.0 作为正式版发布，不要勾选 **Pre-release**。
-5. 发布前检查附件名、大小和散列，尤其不能把本机 RenpyThief 或内部 ZIP 误传。
+5. 发布前检查附件名、大小和散列，尤其不能把本机 RenpyThief、用户 API 凭据或内部 ZIP 误传。
 
 GitHub CLI 示例：
 
@@ -141,11 +126,7 @@ gh release create v1.0.0 `
   .\release\RenpyThiefPatch-v1.0.0-setup-x64.exe `
   .\release\RenpyThiefPatch-v1.0.0-portable-x64.zip `
   .\release\SHA256SUMS.txt `
-  .\release\source-assets-v1.0.0\PyQt5-5.15.11.tar.gz `
-  .\release\source-assets-v1.0.0\qt-everywhere-src-5.15.2.tar.xz `
-  .\release\source-assets-v1.0.0\MinHook-1.3.4-c3fcafdc10146beb5919319d0683e44e3c30d537.zip `
-  .\release\source-assets-v1.0.0\Python-3.12.7.tar.xz `
-  .\release\source-assets-v1.0.0\SOURCE_ARCHIVES.SHA256 `
+  .\release\THIRD_PARTY_SOURCE_REFERENCE.txt `
   --title "v1.0.0 — 我的 API 可走本机模型，并在本地完成会话" `
   --notes-file .\RELEASE_NOTES.md
 ```
@@ -155,5 +136,5 @@ gh release create v1.0.0 `
 - 使用未登录浏览器打开 Release，确认普通用户无需展开说明即可选对安装版或便携版。
 - 重新下载两个用户包和校验文件，复核远程文件的 SHA-256。
 - 在干净机器上分别执行一次安装、启动、卸载和便携版解压启动。
-- 确认 GitHub Actions 对标签对应提交通过，标签源码可下载，第三方对应源码资产持续可用。
+- 确认 GitHub Actions 对标签对应提交通过，标签源码可下载；第三方对应源码在清单未变期间，应能从 `v0.1.2` 继续下载且散列一致。
 - 若下载说明或校验值错误，先撤下有问题的二进制并发布更正版本，不要静默替换同名资产。

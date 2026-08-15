@@ -24,7 +24,7 @@
 ## 下载与安装
 
 > [!IMPORTANT]
-> **普通用户只需下载下面两个程序包之一，不要下载 Release 中的对应源码附件，也不要点击 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`。** PyQt5、Qt、MinHook、Python 等源码归档用于履行开源许可证义务，不能直接安装或运行本补丁。
+> **普通用户只需下载下面两个程序包之一，不要下载对应源码附件，也不要点击 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`。** PyQt5、Qt、MinHook、Python 等锁定源码目前托管在 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2)，用于履行开源许可证义务，不能直接安装或运行本补丁。
 
 | 下载文件 | 适合谁 | 如何使用 |
 |---|---|---|

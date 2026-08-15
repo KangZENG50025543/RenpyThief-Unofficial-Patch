@@ -9,7 +9,7 @@
 | **`RenpyThiefPatch-v1.0.0-setup-x64.exe`** | 推荐；带安装向导、开始菜单、可选桌面快捷方式和卸载入口 |
 | **`RenpyThiefPatch-v1.0.0-portable-x64.zip`** | 免安装；完整解压后运行 `RenpyThiefPatch.exe` |
 
-`SHA256SUMS.txt` 用于校验下载文件。Release 中的 PyQt5、Qt、MinHook、Python 源码归档，以及 GitHub 自动显示的 **Source code (zip/tar.gz)**，均是供审计、开发和履行开源许可证义务使用的对应源码，**不是普通用户要安装的程序**。
+`SHA256SUMS.txt` 用于校验安装器和便携 ZIP。PyQt5、Qt、MinHook、Python 的锁定对应源码与 **v0.1.2 完全相同**，请到 [v0.1.2 Release](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 下载，或阅读本 Release 的 `THIRD_PARTY_SOURCE_REFERENCE.txt`。GitHub 自动显示的 **Source code (zip/tar.gz)** 是本补丁源码，**不是普通用户要安装的程序**。
 
 本项目不包含 RenpyThief。当前只实测 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。官方免费额度仍按原版登录；「我的 API」翻译走用户自己的云服务或本机模型。本补丁不代替原版付费授权，也不会把翻译静默切到官方服务。
 
@@ -64,4 +64,4 @@
 
 ## 许可证与对应源码
 
-项目源码采用 `GPL-3.0-only`，第三方组件适用各自许可证。`v1.0.0` 标签对应本次安装版和便携版的补丁源码；Release 同时提供 PyQt5 5.15.11、Qt 5.15.2、MinHook 1.3.4 和 CPython 3.12.7 的锁定源码归档及 `SOURCE_ARCHIVES.SHA256`。这些源码附件面向开发者和审计者，普通用户无需下载。
+项目源码采用 `GPL-3.0-only`，第三方组件适用各自许可证。`v1.0.0` 标签对应本次安装版和便携版的补丁源码。PyQt5 5.15.11、Qt 5.15.2、MinHook 1.3.4 和 CPython 3.12.7 的锁定源码归档与 v0.1.2 字节级相同，不再重复上传；请从 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 获取并核对 `SOURCE_ARCHIVES.SHA256`。这些源码附件面向开发者和审计者，普通用户无需下载。
