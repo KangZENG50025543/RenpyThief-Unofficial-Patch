@@ -226,10 +226,11 @@ class MainWindow(QMainWindow):
 
         update_group = QGroupBox("兼容性保护")
         update_layout = QVBoxLayout(update_group)
-        self.block_updates_checkbox = QCheckBox("拦截 RenpyThief 自动更新（推荐）")
+        self.block_updates_checkbox = QCheckBox("启用兼容性保护（推荐）")
         self.block_updates_checkbox.clicked.connect(self._block_updates_clicked)
         update_help = QLabel(
-            "默认开启。补丁只锁定原版版本检查，不会覆盖 RenpyThief.exe。"
+            "默认开启。拦截已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报，"
+            "并拒绝官方游戏配置下载。不会覆盖 RenpyThief.exe。"
         )
         update_help.setObjectName("helpText")
         update_help.setWordWrap(True)
@@ -439,6 +440,16 @@ class MainWindow(QMainWindow):
                 max(0, self.quality_combo.findData(QualityMode.FAST.value))
             )
         self._configure_credential_rows(provider.provider_id.value)
+        if provider.provider_id in {
+            ProviderId.OPENAI_COMPATIBLE,
+            ProviderId.LOCAL_OPENAI,
+        }:
+            self.advanced_group.setChecked(True)
+            self.base_url_edit.setPlaceholderText(
+                "例如 http://127.0.0.1:11434/v1 或 http://127.0.0.1:8080/v1"
+            )
+        else:
+            self.base_url_edit.setPlaceholderText("")
         self.test_api_button.setEnabled(
             provider.network_ready
             and not self.launcher.running
@@ -547,9 +558,9 @@ class MainWindow(QMainWindow):
             return
         answer = QMessageBox.warning(
             self,
-            "确认关闭更新拦截？",
-            "关闭后，RenpyThief 可能自动更新。新版可能导致补丁失效，"
-            "也可能覆盖或清除补丁组件。\n\n仍要关闭更新拦截吗？",
+            "确认关闭兼容性保护？",
+            "关闭后，RenpyThief 可能自动更新，且「我的 API」将重新依赖官方会话接口。"
+            "新版可能导致补丁失效，也可能覆盖或清除补丁组件。\n\n仍要关闭兼容性保护吗？",
             QMessageBox.Yes | QMessageBox.Cancel,
             QMessageBox.Cancel,
         )
@@ -567,7 +578,9 @@ class MainWindow(QMainWindow):
         self._update_prompt_ui()
         if custom:
             self.mode_help.setText(
-                "翻译请求会转发到你选择的 API，可能产生费用；只有路由确认后才会提示拖入游戏。"
+                "翻译请求会转发到你选择的 API（含本机 127.0.0.1 上的 OpenAI 兼容服务）；"
+                "可能产生费用。官方会话接口由兼容性保护在进程内应答；"
+                "只有路由确认后才会提示拖入游戏。"
             )
             self.start_button.setText("使用我的 API 启动")
         else:

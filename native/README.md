@@ -35,4 +35,6 @@
 .\native\build\x86\guardlaunch_policy_test.exe
 ```
 
+`versionguard.ini` 默认 `session_compat=observe`、`config_compat=pass`，供官方额度模式只保护版本检查。「我的 API」启动器会写入隔离副本：`session_compat=lock`、`config_compat=deny`。不要同时加载第二套 Qt NAM 钩子。
+
 编译或分发包含 MinHook 的二进制文件时，必须保留其许可证声明，参见 `THIRD_PARTY_NOTICES.md`。

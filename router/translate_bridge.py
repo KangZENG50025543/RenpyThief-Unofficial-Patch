@@ -171,6 +171,11 @@ def retry_log_fields(error: BaseException) -> str | None:
     return None
 
 
+def _is_loopback_base_url(value: str) -> bool:
+    host = (urllib.parse.urlparse(value).hostname or "").casefold()
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 class Translator:
     def __init__(self, args: argparse.Namespace) -> None:
         self.mode = args.mode
@@ -552,6 +557,11 @@ class Translator:
                 payload_object["reasoning_effort"] = self.reasoning_effort
             if self.thinking != "enabled":
                 payload_object["temperature"] = 0.2
+            if self.thinking != "enabled" and _is_loopback_base_url(self.base_url):
+                # Ollama's OpenAI-compatible /v1 defaults Qwen3.5 to thinking.
+                # Native think=false is ignored there; reasoning_effort=none is
+                # the field that actually returns content instead of reasoning.
+                payload_object["reasoning_effort"] = "none"
         elif self.payload_profile == "siliconflow-qwen":
             # SiliconFlow's Qwen endpoint uses a top-level boolean rather than
             # DeepSeek's nested thinking object. This speed-oriented profile is

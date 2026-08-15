@@ -63,7 +63,22 @@ PROVIDERS: tuple[ProviderPreset, ...] = (
         "model-name",
         "openai",
         False,
-        "适用于兼容 /chat/completions 的自定义服务。",
+        "适用于兼容 /chat/completions 的自定义服务。本机可用 http://127.0.0.1:端口/v1，API Key 可留空。",
+        credential_fields=(
+            CredentialField("api_key", "API Key（本机可留空）", secret=True, optional=True),
+        ),
+    ),
+    ProviderPreset(
+        ProviderId.LOCAL_OPENAI,
+        "本地模型（OpenAI 兼容）",
+        "http://127.0.0.1:11434/v1",
+        "local-model",
+        "openai",
+        False,
+        "llama.cpp / Ollama / vLLM 等本机服务。把 Base URL 改成实际端口，模型名改成已加载的模型；本机 HTTP 允许，API Key 可留空。",
+        credential_fields=(
+            CredentialField("api_key", "API Key（可留空）", secret=True, optional=True),
+        ),
     ),
     ProviderPreset(
         ProviderId.YOUDAO,
@@ -146,6 +161,11 @@ def validate_base_url(value: str) -> str:
     if candidate.casefold().endswith(suffix):
         candidate = candidate[: -len(suffix)].rstrip("/")
     return candidate
+
+
+def is_loopback_base_url(value: str) -> bool:
+    host = (urlparse(validate_base_url(value)).hostname or "").casefold()
+    return host in {"127.0.0.1", "localhost", "::1"}
 
 
 def chat_completions_url(base_url: str) -> str:
@@ -302,4 +322,6 @@ def build_connection_test_payload(
             payload["temperature"] = 0.2
     elif profile.payload_profile == "openai":
         payload["temperature"] = 0.2
+        if is_loopback_base_url(profile.base_url):
+            payload["reasoning_effort"] = "none"
     return payload

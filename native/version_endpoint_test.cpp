@@ -48,6 +48,37 @@ int wmain()
             return 1;
         }
     }
+
+    OfficialEndpointMatch official;
+    if (!MatchOfficialEndpoint(
+            "https://api.renpy.fun:5986/renpythief/signIn", official) ||
+        official.endpoint != "signIn" ||
+        ClassifyOfficialEndpoint(official.endpoint) !=
+            OfficialApiKind::Session) {
+        std::fprintf(stderr, "FAIL official session endpoint matching\n");
+        return 1;
+    }
+    if (!MatchOfficialEndpoint(
+            "https://api.renpy.fun/renpythief/getGameConfig", official) ||
+        ClassifyOfficialEndpoint(official.endpoint) !=
+            OfficialApiKind::Config) {
+        std::fprintf(stderr, "FAIL official config endpoint matching\n");
+        return 1;
+    }
+    if (!MatchOfficialEndpoint(
+            "https://api.renpy.fun/renpythief/sendTranslate", official) ||
+        ClassifyOfficialEndpoint(official.endpoint) !=
+            OfficialApiKind::Translate) {
+        std::fprintf(stderr, "FAIL official translate endpoint matching\n");
+        return 1;
+    }
+    if (MatchOfficialEndpoint("http://api.renpy.fun/renpythief/signIn",
+                              official) ||
+        MatchOfficialEndpoint(
+            "https://api.renpy.fun/renpythief/getVersionInfo/", official)) {
+        std::fprintf(stderr, "FAIL official endpoint matching stayed narrow\n");
+        return 1;
+    }
     std::printf("PASS: normalized version endpoint matching is narrow.\n");
     return 0;
 }

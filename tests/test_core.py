@@ -36,6 +36,7 @@ from renpy_patch.providers import (  # noqa: E402
     get_provider,
     make_launch_profile,
     validate_base_url,
+    is_loopback_base_url,
 )
 from renpy_patch.settings import SettingsStore  # noqa: E402
 
@@ -165,6 +166,17 @@ class ProviderTests(unittest.TestCase):
         self.assertNotIn("reasoning_effort", payload)
         self.assertEqual(len(payload["messages"]), 1)
 
+    def test_loopback_openai_connection_test_disables_thinking(self) -> None:
+        settings = AppSettings(
+            mode="custom",
+            provider=ProviderId.LOCAL_OPENAI.value,
+            base_url="http://127.0.0.1:11434/v1",
+            model="qwen3.5-9b-local",
+        )
+        payload = build_connection_test_payload(settings)
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertNotIn("thinking", payload)
+
     def test_endpoint_and_http_policy(self) -> None:
         self.assertEqual(
             chat_completions_url("https://api.deepseek.com"),
@@ -184,6 +196,8 @@ class ProviderTests(unittest.TestCase):
             validate_base_url("https://user:pass@example.com/v1")
         with self.assertRaises(ValueError):
             validate_base_url("https://example.com/v1?token=nope")
+        self.assertTrue(is_loopback_base_url("http://127.0.0.1:11434/v1"))
+        self.assertFalse(is_loopback_base_url("https://api.deepseek.com"))
 
 
 class BridgeEnvironmentTests(unittest.TestCase):
@@ -222,6 +236,22 @@ class BridgeEnvironmentTests(unittest.TestCase):
             {"app_key": "test-app", "app_secret": "test-secret"},
         )
         self.assertNotIn("UPSTREAM_PROMPT_MODE", environment)
+
+    def test_loopback_openai_allows_empty_api_key(self) -> None:
+        settings = AppSettings(
+            mode="custom",
+            provider=ProviderId.LOCAL_OPENAI.value,
+            base_url="http://127.0.0.1:8080/v1",
+            model="tiny-local",
+        )
+        environment = _custom_bridge_environment(settings, {})
+        self.assertNotIn("UPSTREAM_API_KEY", environment)
+        self.assertEqual(environment["UPSTREAM_PROMPT_MODE"], "template1")
+
+    def test_remote_openai_still_requires_api_key(self) -> None:
+        settings = AppSettings(mode="custom")
+        with self.assertRaises(ValueError):
+            _custom_bridge_environment(settings, {})
 
 
 class GuardedLauncherTests(unittest.TestCase):

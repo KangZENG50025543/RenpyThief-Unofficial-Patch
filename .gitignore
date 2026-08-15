@@ -23,6 +23,7 @@ native/build/
 # distributed as GitHub Release assets, not committed to the source tree.
 router/_internal/
 router/*.log
+router/runtime/
 
 # Secrets and local configuration
 .env

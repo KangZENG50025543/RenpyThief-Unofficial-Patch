@@ -410,6 +410,32 @@ class HunyuanSegmentationTests(unittest.TestCase):
         self.assertNotIn("thinking", qwen)
         self.assertNotIn("reasoning_effort", qwen)
 
+    def test_loopback_openai_sends_reasoning_effort_none(self) -> None:
+        payload = BRIDGE.Translator(
+            Namespace(
+                mode="openai",
+                base_url="http://127.0.0.1:11434/v1",
+                api_key="",
+                model="qwen3.5-9b-local",
+                timeout=2.0,
+                payload_profile="openai",
+                thinking="omit",
+                reasoning_effort="none",
+                prompt_mode="template1",
+                custom_prompt="",
+                upstream_concurrency=1,
+            )
+        ).build_payload_object("source", "ja", "zh")
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertNotIn("thinking", payload)
+
+    def test_remote_openai_still_omits_reasoning_effort_none(self) -> None:
+        payload = make_translator("openai").build_payload_object(
+            "source", "ja", "zh"
+        )
+        self.assertNotIn("reasoning_effort", payload)
+        self.assertNotIn("thinking", payload)
+
     def test_mixed_line_endings_translate_segments_and_restore_order(self) -> None:
         source = "A\r\nB\nC\rD"
         translations = {"A": "甲", "B": "乙", "C": "丙", "D": "丁"}

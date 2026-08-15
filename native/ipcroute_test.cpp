@@ -300,6 +300,20 @@ bool ReadTextFile(const std::wstring& path, std::string& value)
     return true;
 }
 
+bool WaitForDynamicBaseLog(const std::wstring& path, unsigned short base)
+{
+    const std::string needle = "dynamic_base=" + std::to_string(base) +
+                               " listeners=";
+    for (int attempt = 0; attempt < 250; ++attempt) {
+        std::string log;
+        if (ReadTextFile(path, log) && log.find(needle) != std::string::npos) {
+            return true;
+        }
+        Sleep(20);
+    }
+    return false;
+}
+
 bool WaitForStageLog(const std::wstring& path)
 {
     for (int attempt = 0; attempt < 100; ++attempt) {
@@ -371,6 +385,20 @@ int wmain(int argc, wchar_t** argv)
         return 1;
     }
 
+    // Production injects after RenpyThief has already listen()'d the three
+    // consecutive translator ports. Discover those existing listeners.
+    SOCKET routeListeners[3] = {
+        INVALID_SOCKET, INVALID_SOCKET, INVALID_SOCKET
+    };
+    for (unsigned short offset = 0; offset < 3; ++offset) {
+        if (!BindListener("127.0.0.2",
+                          static_cast<unsigned short>(kTestDynamicBase + offset),
+                          routeListeners[offset])) {
+            Fail("bind existing consecutive translator listeners");
+            return 1;
+        }
+    }
+
     HMODULE module = LoadLibraryW(runtimeDll.c_str());
     if (!module) {
         Fail("LoadLibrary ipcroute.dll");
@@ -390,19 +418,9 @@ int wmain(int argc, wchar_t** argv)
         Fail("wait for hook initialization");
         return 1;
     }
-
-    // Translator listeners are created only after both listen and WSAAccept are
-    // hooked. The test base is intentionally unrelated to historical port 1338.
-    SOCKET routeListeners[3] = {
-        INVALID_SOCKET, INVALID_SOCKET, INVALID_SOCKET
-    };
-    for (unsigned short offset = 0; offset < 3; ++offset) {
-        if (!BindListener("127.0.0.2",
-                          static_cast<unsigned short>(kTestDynamicBase + offset),
-                          routeListeners[offset])) {
-            Fail("bind dynamic consecutive translator listeners");
-            return 1;
-        }
+    if (!WaitForDynamicBaseLog(runtimeLog, kTestDynamicBase)) {
+        Fail("snapshot existing consecutive translator listeners");
+        return 1;
     }
 
     WSAEVENT routeEvent = WSACreateEvent();

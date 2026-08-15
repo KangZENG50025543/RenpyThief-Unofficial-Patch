@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.1.2',
+    [string]$Version = '1.0.0',
 
     [string]$Python = 'python.exe',
 
@@ -10,6 +10,15 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell 5.1 defaults to the ANSI code page. Git emits UTF-8 paths.
+$utf8 = New-Object System.Text.UTF8Encoding $false
+try {
+    [Console]::InputEncoding = $utf8
+    [Console]::OutputEncoding = $utf8
+} catch {
+}
+$OutputEncoding = $utf8
 
 $scriptPath = $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($scriptPath)) {

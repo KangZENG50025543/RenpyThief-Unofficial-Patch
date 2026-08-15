@@ -113,6 +113,16 @@ class GuiControlTests(unittest.TestCase):
         )
         self.assertEqual(self.window.status_title.text(), "官方额度 · 已就绪")
 
+    def test_local_openai_exposes_loopback_url_and_optional_key(self) -> None:
+        self.window.custom_radio.setChecked(True)
+        provider_index = self.window.provider_combo.findData(
+            ProviderId.LOCAL_OPENAI.value
+        )
+        self.window.provider_combo.setCurrentIndex(provider_index)
+        self.assertTrue(self.window.advanced_group.isChecked())
+        self.assertIn("127.0.0.1", self.window.base_url_edit.text())
+        self.assertIn("可留空", self.window.credential_labels[0].text())
+
 
 if __name__ == "__main__":
     unittest.main()

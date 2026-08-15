@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -26,6 +27,16 @@ namespace {
 enum class GuardMode {
     Observe,
     Lock,
+};
+
+enum class SessionCompat {
+    Observe,
+    Lock,
+};
+
+enum class ConfigCompat {
+    Pass,
+    Deny,
 };
 
 // MSVC x86 ABI: ECX is the manager, EDX is unused by the fastcall hook, and
@@ -45,6 +56,8 @@ std::wstring g_dir;
 CRITICAL_SECTION g_logLock;
 bool g_logLockReady = false;
 GuardMode g_mode = GuardMode::Observe;
+SessionCompat g_sessionCompat = SessionCompat::Observe;
+ConfigCompat g_configCompat = ConfigCompat::Pass;
 NetworkGetFn g_networkGet = nullptr;
 CreateRequestFn g_createRequest = nullptr;
 FromJsonFn g_fromJson = nullptr;
@@ -53,6 +66,7 @@ std::atomic<unsigned long> g_blockedChecks{0};
 std::atomic<unsigned long> g_getMatches{0};
 std::atomic<unsigned long> g_createRequestMatches{0};
 std::string g_localVersion;
+std::string g_localUserName = "local";
 
 class NetworkReplyAccess : public QNetworkReply {
 public:
@@ -111,6 +125,14 @@ bool IsSafeVersion(const std::string& value)
     return std::all_of(value.begin(), value.end(), [](unsigned char c) {
         return std::isalnum(c) || c == '.' || c == '-' || c == '_' ||
                c == '+';
+    });
+}
+
+bool IsSafeUserName(const std::string& value)
+{
+    if (value.empty() || value.size() > 64) return false;
+    return std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '.' || c == '-' || c == '_';
     });
 }
 
@@ -198,6 +220,41 @@ std::string ReadHostFileVersion()
     return IsSafeVersion(version) ? version : std::string();
 }
 
+std::string ReadLocalUserName()
+{
+    wchar_t executable[32768]{};
+    const DWORD length = GetModuleFileNameW(
+        nullptr, executable, static_cast<DWORD>(_countof(executable)));
+    if (!length || length >= _countof(executable)) return {};
+    wchar_t* slash = wcsrchr(executable, L'\\');
+    if (!slash) return {};
+    wcscpy_s(slash + 1,
+             _countof(executable) - static_cast<size_t>(slash + 1 - executable),
+             L"user");
+    HANDLE file = CreateFileW(executable, GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE |
+                                  FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                              nullptr);
+    if (file == INVALID_HANDLE_VALUE) return {};
+    char buffer[256]{};
+    DWORD read = 0;
+    const BOOL ok = ReadFile(file, buffer, sizeof(buffer) - 1, &read, nullptr);
+    CloseHandle(file);
+    if (!ok || read == 0) return {};
+    const std::string text(buffer, static_cast<size_t>(read));
+    const size_t key = text.find("username");
+    if (key == std::string::npos) return {};
+    size_t pos = text.find('=', key);
+    if (pos == std::string::npos) return {};
+    ++pos;
+    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t')) ++pos;
+    size_t end = pos;
+    while (end < text.size() && text[end] != '\r' && text[end] != '\n') ++end;
+    const std::string name = text.substr(pos, end - pos);
+    return IsSafeUserName(name) ? name : std::string();
+}
+
 void LoadConfiguration()
 {
     wchar_t value[128]{};
@@ -215,10 +272,29 @@ void LoadConfiguration()
                                              : WideToUtf8(configured);
     if (!IsSafeVersion(g_localVersion)) g_localVersion.clear();
 
+    GetPrivateProfileStringW(L"versionguard", L"session_compat", L"observe",
+                             value, static_cast<DWORD>(_countof(value)),
+                             path.c_str());
+    g_sessionCompat = TrimLower(value) == L"lock" ? SessionCompat::Lock
+                                                  : SessionCompat::Observe;
+    GetPrivateProfileStringW(L"versionguard", L"config_compat", L"pass", value,
+                             static_cast<DWORD>(_countof(value)), path.c_str());
+    g_configCompat = TrimLower(value) == L"deny" ? ConfigCompat::Deny
+                                                 : ConfigCompat::Pass;
+
+    const std::string localUser = ReadLocalUserName();
+    if (IsSafeUserName(localUser)) g_localUserName = localUser;
+
     Log(std::string("configuration mode=") +
         (g_mode == GuardMode::Lock ? "lock" : "observe") +
+        " session_compat=" +
+        (g_sessionCompat == SessionCompat::Lock ? "lock" : "observe") +
+        " config_compat=" +
+        (g_configCompat == ConfigCompat::Deny ? "deny" : "pass") +
         " local_version=" +
-        (g_localVersion.empty() ? "unavailable" : g_localVersion));
+        (g_localVersion.empty() ? "unavailable" : g_localVersion) +
+        " username_present=" +
+        (localUser.empty() ? "false" : "true"));
 }
 
 std::string PercentEncodedVersionResponse()
@@ -333,16 +409,155 @@ QNetworkReply* HandleVersionRequest(
     return reply;
 }
 
+std::string PercentEncode(const std::string& value)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(value.size() * 3);
+    for (unsigned char c : value) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('%');
+            out.push_back(hex[c >> 4]);
+            out.push_back(hex[c & 15]);
+        }
+    }
+    return out;
+}
+
+std::string SessionJson(const std::string& endpoint)
+{
+    if (endpoint == "pingTest" || endpoint == "submitInject" ||
+        endpoint == "submitEndGame") {
+        return "{\"status\":200,\"msg\":\"OK\",\"data\":\"1\"}";
+    }
+    return std::string("{\"status\":200,\"msg\":\"OK\",\"data\":{") +
+           "\"userId\":1,\"levelId\":1,\"levelName\":\"local\",\"username\":\"" +
+           g_localUserName +
+           "\",\"userTransCount\":0,\"userTransCharCount\":0,"
+           "\"remainCharCount\":999999999,\"extraCharCount\":0,"
+           "\"unreadMessageCount\":0,\"levelExpireDate\":4102444800000,"
+           "\"gptTrialUser\":false,\"levelExpireDateStr\":\"2099-12-31\","
+           "\"freeUserGPTExpireDate\":0}}";
+}
+
+QNetworkReply* SucceedLocally(QNetworkAccessManager* self,
+                              const QNetworkRequest& request,
+                              RequestEntry entry, const std::string& json)
+{
+    const std::string dataUrl = "data:application/json," + PercentEncode(json);
+    const QByteArray encoded(dataUrl.data(), static_cast<int>(dataUrl.size()));
+    QNetworkRequest replacement(request);
+    replacement.setUrl(QUrl::fromEncoded(encoded, QUrl::StrictMode));
+    QNetworkReply* reply = entry == RequestEntry::Get
+        ? g_networkGet(self, replacement)
+        : g_createRequest(self, QNetworkAccessManager::GetOperation,
+                          replacement, nullptr);
+    if (!reply) return nullptr;
+    auto* access = static_cast<NetworkReplyAccess*>(reply);
+    access->setUrl(request.url());
+    access->setAttribute(QNetworkRequest::HttpStatusCodeAttribute,
+                         QVariant(200));
+    return reply;
+}
+
+QNetworkReply* FailLocally(QNetworkAccessManager* self,
+                           RequestEntry entry,
+                           QNetworkAccessManager::Operation operation,
+                           const QNetworkRequest& request)
+{
+    const char drop[] = "compat-drop:denied";
+    const QByteArray encoded(drop, static_cast<int>(sizeof(drop) - 1));
+    QNetworkRequest replacement(request);
+    replacement.setUrl(QUrl::fromEncoded(encoded, QUrl::StrictMode));
+    QNetworkReply* reply = entry == RequestEntry::Get
+        ? g_networkGet(self, replacement)
+        : g_createRequest(self, operation, replacement, nullptr);
+    if (reply) {
+        auto* access = static_cast<NetworkReplyAccess*>(reply);
+        access->setUrl(request.url());
+    }
+    return reply;
+}
+
+const char* KindName(OfficialApiKind kind)
+{
+    switch (kind) {
+    case OfficialApiKind::Version:
+        return "version";
+    case OfficialApiKind::Session:
+        return "session";
+    case OfficialApiKind::Config:
+        return "config";
+    case OfficialApiKind::Translate:
+        return "translate";
+    case OfficialApiKind::Other:
+        return "other";
+    default:
+        return "none";
+    }
+}
+
+QNetworkReply* DispatchOfficialRequest(
+    QNetworkAccessManager* self, const QNetworkRequest& request,
+    RequestEntry entry, QNetworkAccessManager::Operation operation,
+    QIODevice* outgoingData)
+{
+    OfficialEndpointMatch official;
+    if (!MatchOfficialEndpoint(EncodedUrl(request), official)) {
+        return entry == RequestEntry::Get
+            ? g_networkGet(self, request)
+            : g_createRequest(self, operation, request, outgoingData);
+    }
+    const OfficialApiKind kind = ClassifyOfficialEndpoint(official.endpoint);
+    if (kind == OfficialApiKind::Version &&
+        IsSupportedVersionOperation(operation)) {
+        VersionEndpointMatch shape;
+        shape.hasQuery = official.hasQuery;
+        shape.hasExplicitPort = official.hasExplicitPort;
+        return HandleVersionRequest(self, request, entry, operation,
+                                    outgoingData, shape);
+    }
+
+    const bool sessionLock = g_mode == GuardMode::Lock &&
+                             g_sessionCompat == SessionCompat::Lock &&
+                             kind == OfficialApiKind::Session &&
+                             IsSupportedVersionOperation(operation);
+    const bool configDeny = g_mode == GuardMode::Lock &&
+                            g_configCompat == ConfigCompat::Deny &&
+                            kind == OfficialApiKind::Config &&
+                            IsSupportedVersionOperation(operation);
+    const char* action = sessionLock ? "short_circuit"
+                                     : (configDeny ? "deny" : "pass");
+    Log("request matched endpoint=" + official.endpoint +
+        " kind=" + std::string(KindName(kind)) +
+        " entry=" + std::string(EntryName(entry)) +
+        " operation=" + OperationName(operation) +
+        " action=" + action);
+    if (sessionLock) {
+        QNetworkReply* reply =
+            SucceedLocally(self, request, entry, SessionJson(official.endpoint));
+        if (!reply) {
+            Log("short_circuit failed reason=null_reply endpoint=" +
+                official.endpoint + " action=fail_closed");
+        }
+        return reply;
+    }
+    if (configDeny) {
+        return FailLocally(self, entry, operation, request);
+    }
+    return entry == RequestEntry::Get
+        ? g_networkGet(self, request)
+        : g_createRequest(self, operation, request, outgoingData);
+}
+
 QNetworkReply* __fastcall HookNetworkGet(QNetworkAccessManager* self, void*,
                                          const QNetworkRequest& request)
 {
-    VersionEndpointMatch shape;
-    if (!MatchVersionEndpoint(EncodedUrl(request), shape)) {
-        return g_networkGet(self, request);
-    }
-    return HandleVersionRequest(self, request, RequestEntry::Get,
-                                QNetworkAccessManager::GetOperation, nullptr,
-                                shape);
+    return DispatchOfficialRequest(self, request, RequestEntry::Get,
+                                   QNetworkAccessManager::GetOperation,
+                                   nullptr);
 }
 
 QNetworkReply* __fastcall HookCreateRequest(
@@ -350,15 +565,8 @@ QNetworkReply* __fastcall HookCreateRequest(
     QNetworkAccessManager::Operation operation,
     const QNetworkRequest& request, QIODevice* outgoingData)
 {
-    if (!IsSupportedVersionOperation(operation)) {
-        return g_createRequest(self, operation, request, outgoingData);
-    }
-    VersionEndpointMatch shape;
-    if (!MatchVersionEndpoint(EncodedUrl(request), shape)) {
-        return g_createRequest(self, operation, request, outgoingData);
-    }
-    return HandleVersionRequest(self, request, RequestEntry::CreateRequest,
-                                operation, outgoingData, shape);
+    return DispatchOfficialRequest(self, request, RequestEntry::CreateRequest,
+                                   operation, outgoingData);
 }
 
 bool ReadQByteArray(const void* object, const char*& data, int& size)

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from .models import AppSettings, TranslationMode
-from .providers import make_launch_profile
+from .providers import is_loopback_base_url, make_launch_profile
 from .settings import find_router_script
 
 
@@ -187,6 +187,8 @@ def _custom_bridge_environment(
         "microsoft": ("subscription_key",),
     }
     required_fields = dedicated_fields.get(profile.payload_profile, ("api_key",))
+    if required_fields == ("api_key",) and is_loopback_base_url(profile.base_url):
+        required_fields = ()
     if any(not credential_values.get(field, "") for field in required_fields):
         raise ValueError("自定义翻译模式缺少必要凭据。")
     if any(
@@ -218,7 +220,11 @@ def _custom_bridge_environment(
             raise ValueError("凭据数据过长或包含 NUL。")
         environment["UPSTREAM_CREDENTIALS_JSON"] = serialized
     else:
-        environment["UPSTREAM_API_KEY"] = credential_values["api_key"]
+        api_key = credential_values.get("api_key", "")
+        if api_key:
+            environment["UPSTREAM_API_KEY"] = api_key
+        elif not is_loopback_base_url(profile.base_url):
+            raise ValueError("非本机 API 必须填写 API Key。")
         environment["UPSTREAM_PROMPT_MODE"] = prompt_mode
         if prompt_mode == "custom":
             environment["UPSTREAM_CUSTOM_PROMPT"] = custom_prompt

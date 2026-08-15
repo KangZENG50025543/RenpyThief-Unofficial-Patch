@@ -43,7 +43,7 @@ cl /nologo /O2 /MT /W3 /DUNICODE /D_UNICODE /I"%MHSRC%\include" /I"%MHSRC%\src" 
   "%MHSRC%\src\buffer.c" "%MHSRC%\src\hook.c" "%MHSRC%\src\trampoline.c" "%MHSRC%\src\hde\hde32.c" || goto :fail
 
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE /I"%MHSRC%\include" /c "%~dp0ipcroute.cpp" || goto :fail
-link /nologo /dll /out:"%OUTPUT%\ipcroute.dll" /implib:ipcroute.lib ipcroute.obj buffer.obj hook.obj trampoline.obj hde32.obj ws2_32.lib || goto :fail
+link /nologo /dll /out:"%OUTPUT%\ipcroute.dll" /implib:ipcroute.lib ipcroute.obj buffer.obj hook.obj trampoline.obj hde32.obj ws2_32.lib iphlpapi.lib || goto :fail
 
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0netinject.cpp" /Fe:"%OUTPUT%\netinject.exe" || goto :fail
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0guardlaunch.cpp" /Fe:"%OUTPUT%\guardlaunch.exe" || goto :fail

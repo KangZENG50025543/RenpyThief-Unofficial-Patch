@@ -1,4 +1,4 @@
-# Third-party source archives for the v0.1.2 Windows release.
+# Third-party source archives for the v1.0.0 Windows release.
 #
 # This file is parsed by scripts/prepare_release_sources.ps1. Keep the header
 # and pipe-delimited field order unchanged. A missing or non-SHA256 digest makes

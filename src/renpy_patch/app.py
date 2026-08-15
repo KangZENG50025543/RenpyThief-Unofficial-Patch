@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     application.setApplicationName("RenpyThief 非官方翻译补丁")
     application.setOrganizationName("RenpyThiefUnofficialPatch")
     if not _acquire_single_instance():
+        if smoke_test:
+            sys.stderr.write("another patch window is already running\n")
+            return 2
         QMessageBox.information(None, "补丁已经打开", "请使用已经打开的补丁窗口。")
         return 0
     window = MainWindow()

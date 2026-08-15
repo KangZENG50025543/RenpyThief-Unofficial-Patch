@@ -30,6 +30,7 @@ class ProviderId(str, Enum):
     DEEPSEEK = "deepseek"
     SILICONFLOW_HUNYUAN = "siliconflow-hunyuan"
     OPENAI_COMPATIBLE = "openai-compatible"
+    LOCAL_OPENAI = "local-openai"
     YOUDAO = "youdao"
     BAIDU = "baidu"
     MICROSOFT = "microsoft"

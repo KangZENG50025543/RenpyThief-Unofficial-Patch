@@ -40,3 +40,33 @@ DLL 注入失败、`hook_ready` 失败、钩子运行期失败、等待 API 失�
 - `hook_ready` 和 `blocked_check` 在 `versionguard.log` 中是不同状态，排障时不可混用。
 
 `version_endpoint_test.exe` 覆盖端口、查询参数、大小写和相邻接口的正反例；RenpyThief 6.7.8 已完成真实启动测试，并确认日志最终出现 `state=blocked_check`。
+
+## 自定义 API 下的会话与配置兼容
+
+「我的 API」启动链会把 `versionguard.dll` 复制到隔离 runtime，并写入：
+
+```ini
+[versionguard]
+mode=lock
+local_version=auto
+session_compat=lock
+config_compat=deny
+```
+
+官方免费额度模式继续使用仓库内默认 ini：`session_compat=observe`、`config_compat=pass`，因此只保护版本检查，不改写登录。
+
+`session_compat=lock` 时，下列官方接口在 Qt `QNetworkAccessManager` 层被替换为本地 `data:` JSON，不把请求发到 `api.renpy.fun`：
+
+- `signIn`
+- `checkUserUnReadMessageCount`
+- `pingTest`
+- `submitInject`
+- `submitEndGame`
+
+合成 JSON 只使用固定字段名和本地 EXE 文件版本；若原版目录存在 `user` 文件，仅读取 `username=` 且必须是安全 ASCII token。日志只写 `username_present=true/false`，不写用户名、口令或 Cookie。
+
+`config_compat=deny` 时，已知游戏配置/补齐接口（如 `getGameConfig`、`getUnityHook`、`getV8`）在同一钩子内失败关闭，避免官方配置下载。未知官方路径保持透传，不做猜测。
+
+`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 始终透传。自定义翻译仍由 `ipcroute` 在动态回环端口劫持，转发到本机 Bridge。不要同时再注入另一套 Qt NAM 钩子。
+
+版本检查的 `hook_ready` / `blocked_check` 契约不变：guardlaunch 仍只等待 `getVersionInfo` 被拦截。会话短路发生在主线程恢复之后，不作为启动器握手条件。

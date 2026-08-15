@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -227,6 +228,51 @@ int WSAAPI HookListen(SOCKET socket, int backlog)
     }
     WSASetLastError(resultError);
     return result;
+}
+
+bool IsIpv4LoopbackAddress(DWORD networkOrderAddress)
+{
+    return (ntohl(networkOrderAddress) & 0xff000000UL) == 0x7f000000UL;
+}
+
+void ScanExistingLoopbackListeners()
+{
+    DWORD size = 0;
+    DWORD status = GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET,
+                                       TCP_TABLE_OWNER_PID_LISTENER, 0);
+    if (status != ERROR_INSUFFICIENT_BUFFER || size == 0) {
+        Log("existing_loopback_scan=skipped win32=" + std::to_string(status));
+        return;
+    }
+
+    void* memory = HeapAlloc(GetProcessHeap(), 0, size);
+    if (!memory) {
+        Log("existing_loopback_scan=alloc_failed");
+        return;
+    }
+
+    status = GetExtendedTcpTable(memory, &size, FALSE, AF_INET,
+                                 TCP_TABLE_OWNER_PID_LISTENER, 0);
+    unsigned counted = 0;
+    if (status == NO_ERROR) {
+        const auto* table =
+            static_cast<const MIB_TCPTABLE_OWNER_PID*>(memory);
+        const DWORD self = GetCurrentProcessId();
+        for (DWORD index = 0; index < table->dwNumEntries; ++index) {
+            const MIB_TCPROW_OWNER_PID& row = table->table[index];
+            if (row.dwOwningPid != self) continue;
+            if (!IsIpv4LoopbackAddress(row.dwLocalAddr)) continue;
+            const auto port = static_cast<unsigned short>(
+                ntohs(static_cast<unsigned short>(row.dwLocalPort)));
+            if (port == 0) continue;
+            RecordLoopbackListener(port);
+            ++counted;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, memory);
+
+    Log("existing_loopback_listeners=" + std::to_string(counted) +
+        (status == NO_ERROR ? "" : " win32=" + std::to_string(status)));
 }
 
 ULONGLONG DeadlineFromNow(int milliseconds)
@@ -696,6 +742,12 @@ DWORD WINAPI Start(void*)
     const MH_STATUS enabled = MH_EnableHook(MH_ALL_HOOKS);
     Log("hook enabled status=" + std::to_string(enabled) +
         " dynamic_base=waiting");
+    if (enabled == MH_OK) {
+        // RenpyThief often bind/listen the three translation ports before this
+        // DLL is injected. listen() will not fire again, so snapshot current
+        // loopback listeners owned by this process.
+        ScanExistingLoopbackListeners();
+    }
     g_ready.store(enabled == MH_OK ? 1 : -1);
     return enabled == MH_OK ? 0 : 1;
 }

@@ -15,6 +15,7 @@ from .providers import (
     build_connection_test_payload,
     chat_completions_url,
     get_provider,
+    is_loopback_base_url,
     make_launch_profile,
 )
 
@@ -70,17 +71,19 @@ def _test_ai(
     timeout: float,
 ) -> str:
     profile = make_launch_profile(settings)
-    (api_key,) = _required(values, "api_key")
+    api_key = values.get("api_key", "").strip()
+    if not api_key and not is_loopback_base_url(profile.base_url):
+        raise ValueError("非本机 API 必须填写 API Key。")
     payload = json.dumps(
         build_connection_test_payload(settings), ensure_ascii=False
     ).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = "Bearer " + api_key
     request = urllib.request.Request(
         chat_completions_url(profile.base_url),
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + api_key,
-        },
+        headers=headers,
         method="POST",
     )
     body = _request_json(request, timeout)

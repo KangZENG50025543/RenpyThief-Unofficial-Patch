@@ -501,9 +501,28 @@ try {
     }
     Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
 
+    New-Item -ItemType Directory -Path $runtimeRoot -ErrorAction SilentlyContinue | Out-Null
+    $runtimeName = 'launch-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmssfff')
+    $runtimeDir = Join-Path $runtimeRoot $runtimeName
+    New-Item -ItemType Directory -Path $runtimeDir -ErrorAction Stop | Out-Null
+
+    $guardDll = $versionGuardSource
     if ($blockUpdatesEnabled) {
+        $runtimeGuardDll = Join-Path $runtimeDir 'versionguard.dll'
+        $runtimeGuardIni = Join-Path $runtimeDir 'versionguard.ini'
+        Copy-Item -LiteralPath $versionGuardSource -Destination $runtimeGuardDll -ErrorAction Stop
+        [IO.File]::WriteAllText(
+            $runtimeGuardIni,
+            "[versionguard]`r`nmode=lock`r`nlocal_version=auto`r`nsession_compat=lock`r`nconfig_compat=deny`r`n",
+            (New-Object Text.UTF8Encoding($false))
+        )
+        if ((Get-FileHash -LiteralPath $versionGuardSource -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $runtimeGuardDll -Algorithm SHA256).Hash) {
+            throw "Runtime versionguard hash verification failed: $runtimeGuardDll"
+        }
+        $guardDll = $runtimeGuardDll
         $translatorProcess = Start-GuardedTranslator -Path $resolvedTranslator `
-            -GuardDll $versionGuardSource
+            -GuardDll $guardDll
     } else {
         $translatorProcess = Start-IsolatedTranslator -Path $resolvedTranslator
     }
@@ -526,10 +545,6 @@ try {
     }
     Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
 
-    New-Item -ItemType Directory -Path $runtimeRoot -ErrorAction SilentlyContinue | Out-Null
-    $runtimeName = 'RenpyThief-{0}-{1}' -f $translatorProcess.Id, (Get-Date -Format 'yyyyMMdd-HHmmssfff')
-    $runtimeDir = Join-Path $runtimeRoot $runtimeName
-    New-Item -ItemType Directory -Path $runtimeDir -ErrorAction Stop | Out-Null
     $runtimeDll = Join-Path $runtimeDir 'ipcroute.dll'
     $runtimeIni = Join-Path $runtimeDir 'ipcroute.ini'
     Copy-Item -LiteralPath $routeDllSource -Destination $runtimeDll -ErrorAction Stop
