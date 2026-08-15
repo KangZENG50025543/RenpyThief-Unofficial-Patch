@@ -2,7 +2,6 @@
 #include <windows.h>
 #include <tlhelp32.h>
 
-#include <algorithm>
 #include <cstring>
 #include <cstdio>
 #include <cwchar>
@@ -78,39 +77,6 @@ std::wstring QuoteCommandLineArgument(const std::wstring& value)
     return L"\"" + value + L"\"";
 }
 
-std::wstring Upper(std::wstring value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](wchar_t c) {
-                       return static_cast<wchar_t>(towupper(c));
-                   });
-    return value;
-}
-
-bool EndsWith(const std::wstring& value, const wchar_t* suffix)
-{
-    const size_t length = wcslen(suffix);
-    return value.size() >= length &&
-           value.compare(value.size() - length, length, suffix) == 0;
-}
-
-bool IsSensitiveEnvironmentName(const std::wstring& original)
-{
-    const std::wstring name = Upper(original);
-    if (name.compare(0, 9, L"UPSTREAM_") == 0 ||
-        name.compare(0, 7, L"OPENAI_") == 0 ||
-        name.compare(0, 9, L"DEEPSEEK_") == 0 ||
-        name.compare(0, 12, L"SILICONFLOW_") == 0 ||
-        name.compare(0, 6, L"BAIDU_") == 0 ||
-        name.compare(0, 7, L"YOUDAO_") == 0 ||
-        name.compare(0, 21, L"MICROSOFT_TRANSLATOR_") == 0 ||
-        name == L"BRIDGE_LOG_CONTENT") {
-        return true;
-    }
-    return EndsWith(name, L"_API_KEY") || EndsWith(name, L"_SECRET") ||
-           EndsWith(name, L"_TOKEN") || EndsWith(name, L"_ACCESS_KEY");
-}
-
 bool BuildSanitizedEnvironment(std::vector<wchar_t>& block)
 {
     LPWCH source = GetEnvironmentStringsW();
@@ -123,7 +89,7 @@ bool BuildSanitizedEnvironment(std::vector<wchar_t>& block)
         const std::wstring name = separator == std::wstring::npos
                                       ? entry
                                       : entry.substr(0, separator);
-        if (IsSensitiveEnvironmentName(name)) continue;
+        if (IsBlockedChildEnvironmentName(name)) continue;
         block.insert(block.end(), entry.begin(), entry.end());
         block.push_back(L'\0');
     }

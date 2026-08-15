@@ -6,6 +6,7 @@ import locale
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -60,26 +61,77 @@ def _block_updates(settings: AppSettings) -> bool:
     return bool(value)
 
 
+_SECRET_ENVIRONMENT_PREFIXES = (
+    "UPSTREAM_",
+    "OPENAI_",
+    "DEEPSEEK_",
+    "SILICONFLOW_",
+    "BAIDU_",
+    "YOUDAO_",
+    "MICROSOFT_TRANSLATOR_",
+)
+_SECRET_ENVIRONMENT_SUFFIXES = ("_API_KEY", "_SECRET", "_TOKEN", "_ACCESS_KEY")
+
+
+def _is_blocked_child_environment_name(name: str) -> bool:
+    upper = name.upper()
+    if (
+        upper.startswith("QT_")
+        or upper.startswith("QTWEBENGINE")
+        or upper == "QTDIR"
+        or upper.startswith("QML")
+        or upper == "BRIDGE_LOG_CONTENT"
+        or upper.startswith(_SECRET_ENVIRONMENT_PREFIXES)
+        or upper.endswith(_SECRET_ENVIRONMENT_SUFFIXES)
+    ):
+        return True
+    return False
+
+
+def _packaged_runtime_directories() -> tuple[str, ...]:
+    directories: list[str] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if isinstance(meipass, str) and meipass:
+        directories.append(os.path.abspath(meipass))
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        directories.append(exe_dir)
+        directories.append(os.path.join(exe_dir, "_internal"))
+    unique: list[str] = []
+    seen: set[str] = set()
+    for directory in directories:
+        key = os.path.normcase(directory)
+        if key not in seen:
+            seen.add(key)
+            unique.append(key)
+    return tuple(unique)
+
+
+def _scrub_packaged_runtime_from_path(path_value: str) -> str:
+    blocked = set(_packaged_runtime_directories())
+    if not blocked:
+        return path_value
+    kept: list[str] = []
+    for part in path_value.split(os.pathsep):
+        if not part:
+            continue
+        try:
+            resolved = os.path.normcase(os.path.abspath(part))
+        except OSError:
+            kept.append(part)
+            continue
+        if resolved not in blocked:
+            kept.append(part)
+    return os.pathsep.join(kept)
+
+
 def _sanitized_translator_environment() -> dict[str, str]:
     result: dict[str, str] = {}
-    prefixes = (
-        "UPSTREAM_",
-        "OPENAI_",
-        "DEEPSEEK_",
-        "SILICONFLOW_",
-        "BAIDU_",
-        "YOUDAO_",
-        "MICROSOFT_TRANSLATOR_",
-    )
-    suffixes = ("_API_KEY", "_SECRET", "_TOKEN", "_ACCESS_KEY")
     for name, value in os.environ.items():
-        upper = name.upper()
-        if (
-            upper == "BRIDGE_LOG_CONTENT"
-            or upper.startswith(prefixes)
-            or upper.endswith(suffixes)
-        ):
+        if _is_blocked_child_environment_name(name):
             continue
+        if name.upper() == "PATH":
+            value = _scrub_packaged_runtime_from_path(value)
         result[name] = value
     return result
 

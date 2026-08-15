@@ -18,9 +18,12 @@ from renpy_patch.launcher import (  # noqa: E402
     PatchLauncher,
     _GuardedLaunch,
     _custom_bridge_environment,
+    _is_blocked_child_environment_name,
     _launch_guarded_translator,
+    _sanitized_translator_environment,
     build_custom_command,
 )
+from renpy_patch import launcher as launcher_module  # noqa: E402
 from renpy_patch.models import (  # noqa: E402
     AppSettings,
     DEFAULT_CUSTOM_PROMPT,
@@ -457,6 +460,69 @@ class GuardedLauncherTests(unittest.TestCase):
         self.assertIn("UPDATE_GUARD_WARNING:", script)
         self.assertIn("continuing with update protection unconfirmed", script)
         self.assertIn("Version-update guard returned an unknown diagnostic", script)
+
+    def test_powershell_child_environment_strips_packaged_qt_vars(self) -> None:
+        script = (
+            PROJECT_DIR / "router" / "start_routed_translator.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("StartsWith('QT_')", script)
+        self.assertIn("StartsWith('QML')", script)
+        self.assertIn("StartsWith('QTWEBENGINE')", script)
+        self.assertIn("$upper -eq 'QTDIR'", script)
+
+
+class ChildEnvironmentSanitizationTests(unittest.TestCase):
+    def test_packaged_qt_and_secret_names_are_blocked(self) -> None:
+        self.assertTrue(_is_blocked_child_environment_name("QT_PLUGIN_PATH"))
+        self.assertTrue(_is_blocked_child_environment_name("qt_qpa_platform"))
+        self.assertTrue(
+            _is_blocked_child_environment_name("QT_QPA_PLATFORM_PLUGIN_PATH")
+        )
+        self.assertTrue(_is_blocked_child_environment_name("QTDIR"))
+        self.assertTrue(
+            _is_blocked_child_environment_name("QTWEBENGINEPROCESS_PATH")
+        )
+        self.assertTrue(_is_blocked_child_environment_name("QML2_IMPORT_PATH"))
+        self.assertTrue(_is_blocked_child_environment_name("UPSTREAM_API_KEY"))
+        self.assertFalse(_is_blocked_child_environment_name("PATH"))
+        self.assertFalse(_is_blocked_child_environment_name("SystemRoot"))
+
+    def test_sanitized_translator_environment_drops_packaged_qt_vars(self) -> None:
+        extra = {
+            "QT_PLUGIN_PATH": r"C:\Patch\_internal\PyQt5\Qt5\plugins",
+            "QT_QPA_PLATFORM": "windows",
+            "QML2_IMPORT_PATH": r"C:\Patch\_internal\qml",
+            "QTDIR": r"C:\Patch\_internal",
+        }
+        with mock.patch.dict(os.environ, extra, clear=False):
+            environment = _sanitized_translator_environment()
+        names = {name.upper() for name in environment}
+        self.assertNotIn("QT_PLUGIN_PATH", names)
+        self.assertNotIn("QT_QPA_PLATFORM", names)
+        self.assertNotIn("QML2_IMPORT_PATH", names)
+        self.assertNotIn("QTDIR", names)
+
+    def test_sanitized_environment_removes_frozen_runtime_from_path(self) -> None:
+        meipass = r"C:\patch_runtime"
+        exe = r"C:\patch\RenpyThiefPatch.exe"
+        internal = r"C:\patch\_internal"
+        path_value = os.pathsep.join(
+            [meipass, internal, os.path.dirname(exe), r"C:\Windows\System32"]
+        )
+        with mock.patch.object(launcher_module.sys, "frozen", True, create=True), mock.patch.object(
+            launcher_module.sys, "_MEIPASS", meipass, create=True
+        ), mock.patch.object(
+            launcher_module.sys, "executable", exe
+        ), mock.patch.dict(os.environ, {"PATH": path_value}, clear=False):
+            environment = _sanitized_translator_environment()
+        actual = next(
+            value for name, value in environment.items() if name.upper() == "PATH"
+        )
+        parts = actual.split(os.pathsep)
+        self.assertNotIn(meipass, parts)
+        self.assertNotIn(internal, parts)
+        self.assertNotIn(os.path.dirname(exe), parts)
+        self.assertIn(r"C:\Windows\System32", parts)
 
 
 @unittest.skipUnless(sys.platform == "win32", "Windows launcher contract")

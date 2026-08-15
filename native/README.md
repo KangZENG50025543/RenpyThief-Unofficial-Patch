@@ -37,4 +37,6 @@
 
 `versionguard.ini` 默认 `session_compat=observe`、`config_compat=pass`，供官方额度模式只保护版本检查。「我的 API」启动器会写入隔离副本：`session_compat=lock`、`config_compat=deny`。不要同时加载第二套 Qt NAM 钩子。
 
+`guardlaunch` 启动 32 位 `RenpyThief.exe` 时会丢掉父进程的 `QT_*` / `QML*` 环境变量。64 位补丁 GUI（PyQt5 / PyInstaller）会设置自己的插件目录；若这些变量漏进原版进程，Qt 会找不到可用的 `windows` 平台插件，三连端口也就不会出现。
+
 编译或分发包含 MinHook 的二进制文件时，必须保留其许可证声明，参见 `THIRD_PARTY_NOTICES.md`。

@@ -203,9 +203,15 @@ function Remove-SensitiveChildEnvironment {
     # source translator (or a game it launches) inherit unrelated API secrets or
     # custom prompts from the parent shell. Provider-specific credentials added
     # later are covered by both prefix and suffix matching.
+    # Also drop packaged PyQt5 plugin paths. The 64-bit patch GUI sets QT_* for
+    # itself; 32-bit RenpyThief must use the plugins next to its own exe.
     foreach ($name in @($Info.EnvironmentVariables.Keys)) {
         $upper = $name.ToString().ToUpperInvariant()
         if ($upper -eq 'BRIDGE_LOG_CONTENT' -or
+            $upper -eq 'QTDIR' -or
+            $upper.StartsWith('QT_') -or
+            $upper.StartsWith('QTWEBENGINE') -or
+            $upper.StartsWith('QML') -or
             $upper.StartsWith('UPSTREAM_') -or
             $upper.StartsWith('OPENAI_') -or
             $upper.StartsWith('DEEPSEEK_') -or
