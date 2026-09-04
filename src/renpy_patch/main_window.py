@@ -44,6 +44,7 @@ from .models import (
     TranslationMode,
 )
 from .providers import PROVIDERS, get_provider, make_launch_profile
+from .bundled import bundled_origin_exe, bundled_origin_is_present
 from .settings import SettingsStore, app_data_directory, find_router_script
 
 
@@ -81,6 +82,7 @@ class MainWindow(QMainWindow):
         }
         self._active_custom_slot: str | None = None
         self._prompt_ui_ready = False
+        self._official_translator_path = self.settings.translator_path
 
         self.setWindowTitle(f"RenpyThief 非官方翻译补丁 · {__version__}")
         self.setMinimumSize(640, 600)
@@ -133,7 +135,9 @@ class MainWindow(QMainWindow):
         path_group = QGroupBox("原版程序")
         path_layout = QHBoxLayout(path_group)
         self.translator_path = QLineEdit()
-        self.translator_path.setPlaceholderText("请选择 RenpyThief.exe")
+        self.translator_path.setPlaceholderText(
+            "官方额度请选择你自己的 RenpyThief.exe"
+        )
         self.browse_button = QPushButton("浏览…")
         self.browse_button.clicked.connect(self._browse_translator)
         path_layout.addWidget(self.translator_path, 1)
@@ -241,8 +245,8 @@ class MainWindow(QMainWindow):
         self.block_updates_checkbox.clicked.connect(self._block_updates_clicked)
         update_help = QLabel(
             "默认开启。拦截已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报，"
-            "并在原版目录缺少登录记录时写入仅用于本机的会话标记，同时拒绝官方游戏配置下载。"
-            "不会覆盖已有登录记录，也不会覆盖 RenpyThief.exe。"
+            "并在内置 6.7.8 工作副本缺少登录记录时写入仅用于本机的会话标记，同时拒绝官方游戏配置下载。"
+            "不会覆盖你自己的原版目录，也不会覆盖 RenpyThief.exe。"
         )
         update_help.setObjectName("helpText")
         update_help.setWordWrap(True)
@@ -351,6 +355,7 @@ class MainWindow(QMainWindow):
 
     def _load_settings_into_ui(self) -> None:
         settings = self.settings
+        self._official_translator_path = settings.translator_path
         self.translator_path.setText(settings.translator_path)
         self.official_radio.setChecked(settings.mode == TranslationMode.OFFICIAL.value)
         self.custom_radio.setChecked(settings.mode == TranslationMode.CUSTOM.value)
@@ -390,8 +395,10 @@ class MainWindow(QMainWindow):
             else TranslationMode.OFFICIAL.value
         )
         self._store_active_custom_prompt()
+        if mode != TranslationMode.CUSTOM.value:
+            self._official_translator_path = self.translator_path.text().strip()
         value = AppSettings(
-            translator_path=self.translator_path.text().strip(),
+            translator_path=self._official_translator_path,
             mode=mode,
             provider=str(self.provider_combo.currentData()),
             base_url=self.base_url_edit.text().strip(),
@@ -433,6 +440,7 @@ class MainWindow(QMainWindow):
         )
         if selected:
             self.translator_path.setText(selected)
+            self._official_translator_path = selected
 
     def _provider_changed(self) -> None:
         provider = get_provider(str(self.provider_combo.currentData()))
@@ -608,25 +616,53 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.Yes:
             self.block_updates_checkbox.setChecked(True)
 
+    def _apply_translator_path_ui(self) -> None:
+        custom = self.custom_radio.isChecked()
+        running = self.launcher.running
+        if custom:
+            origin = bundled_origin_exe()
+            if bundled_origin_is_present():
+                self.translator_path.setText(str(origin))
+                self.translator_path.setPlaceholderText("内置干净 RenpyThief 6.7.8")
+            else:
+                self.translator_path.setText("")
+                self.translator_path.setPlaceholderText(
+                    "未找到 6.7.8Origin\\RenpyThief.exe"
+                )
+            self.translator_path.setReadOnly(True)
+            self.translator_path.setEnabled(False)
+            self.browse_button.setEnabled(False)
+            return
+        self.translator_path.setReadOnly(False)
+        self.translator_path.setEnabled(not running)
+        self.translator_path.setPlaceholderText(
+            "官方额度请选择你自己的 RenpyThief.exe"
+        )
+        self.translator_path.setText(self._official_translator_path)
+        self.browse_button.setEnabled(not running)
+
     def _update_mode_ui(self) -> None:
         if not hasattr(self, "api_group"):
             return
+        if not self.translator_path.isReadOnly():
+            self._official_translator_path = self.translator_path.text().strip()
         custom = self.custom_radio.isChecked()
         self.api_group.setVisible(custom)
         self.advanced_group.setVisible(custom)
         self.api_group.setEnabled(custom and not self.launcher.running)
         self.advanced_group.setEnabled(custom and not self.launcher.running)
         self._update_prompt_ui()
+        self._apply_translator_path_ui()
         if custom:
             self.mode_help.setText(
-                "翻译请求会转发到你选择的 API（含本机 127.0.0.1 上的 OpenAI 兼容服务）；"
-                "可能产生费用。官方会话接口由兼容性保护在进程内应答；"
-                "只有路由确认后才会提示拖入游戏。"
+                "「我的 API」自动使用补丁内置的干净 RenpyThief 6.7.8，不读写你电脑上的原版目录。"
+                "翻译请求会转发到你选择的 API（含本机 127.0.0.1 上的 OpenAI 兼容服务），可能产生费用。"
+                "官方会话接口由兼容性保护在进程内应答；只有路由确认后才会提示拖入游戏。"
             )
             self.start_button.setText("使用我的 API 启动")
         else:
             self.mode_help.setText(
-                "直接启动原版，不运行桥接、不注入路由，也不会读取或使用你的 API Key。"
+                "直接启动你选择的原版程序，不运行桥接、不注入路由，也不会读取或使用你的 API Key。"
             )
             self.start_button.setText("启动原版翻译器")
 
@@ -736,10 +772,9 @@ class MainWindow(QMainWindow):
     def _set_controls_running(self, running: bool) -> None:
         self.start_button.setEnabled(not running)
         self.stop_button.setEnabled(running)
-        self.translator_path.setEnabled(not running)
-        self.browse_button.setEnabled(not running)
         self.official_radio.setEnabled(not running)
         self.custom_radio.setEnabled(not running)
+        self._apply_translator_path_ui()
         self.api_group.setEnabled(not running and self.custom_radio.isChecked())
         self.advanced_group.setEnabled(not running and self.custom_radio.isChecked())
         self.prompt_group.setEnabled(not running and self.custom_radio.isChecked())

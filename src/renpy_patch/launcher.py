@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Mapping
 
+from .bundled import resolve_launch_translator
 from .models import AppSettings, CUSTOM_PROMPT_MODES, TranslationMode
 from .providers import is_loopback_base_url, make_launch_profile
 from .settings import find_router_script
@@ -164,9 +165,7 @@ def build_custom_command(
     settings: AppSettings, router_script: Path | None = None
 ) -> list[str]:
     profile = make_launch_profile(settings)
-    translator = Path(settings.translator_path).expanduser()
-    if not translator.is_file() or translator.name.casefold() != "renpythief.exe":
-        raise ValueError("请选择有效的 RenpyThief.exe。")
+    translator = resolve_launch_translator(settings)
     script = router_script or find_router_script()
     if script is None or not script.is_file():
         raise FileNotFoundError("找不到补丁路由组件 start_routed_translator.ps1。")
@@ -539,9 +538,7 @@ class PatchLauncher:
         if _has_existing_translator():
             raise RuntimeError("RenpyThief 已经在运行；请先正常关闭后再启动。")
 
-        translator = Path(settings.translator_path).expanduser()
-        if not translator.is_file() or translator.name.casefold() != "renpythief.exe":
-            raise ValueError("请选择有效的 RenpyThief.exe。")
+        translator = resolve_launch_translator(settings)
 
         self._emit(LaunchEventKind.STARTING, "正在启动……")
         if mode is TranslationMode.OFFICIAL:

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.2',
+    [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
+    [string]$Version = '1.0.3.0',
     [string]$Python = '',
     [string]$IsccPath = '',
     [switch]$PublicRelease
@@ -168,6 +168,19 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'COPYRIGHT') `
     -Destination $releaseRoot
 Copy-Item -LiteralPath (Join-Path $projectRoot 'requirements-lock.txt') `
     -Destination (Join-Path $releaseRoot 'DEPENDENCIES.txt')
+$bundledOrigin = Join-Path $projectRoot '6.7.8Origin'
+$bundledOriginExe = Join-Path $bundledOrigin 'RenpyThief.exe'
+if (!(Test-Path -LiteralPath $bundledOriginExe -PathType Leaf)) {
+    throw "Bundled origin is required: $bundledOriginExe"
+}
+$releaseOrigin = Join-Path $releaseRoot '6.7.8Origin'
+Copy-Item -LiteralPath $bundledOrigin -Destination $releaseOrigin -Recurse -Force
+foreach ($pollutionName in @('user', 'hwid', 'settings.ini', 'settings.json')) {
+    $pollutionPath = Join-Path $releaseOrigin $pollutionName
+    if (Test-Path -LiteralPath $pollutionPath) {
+        Remove-Item -LiteralPath $pollutionPath -Force -ErrorAction Stop
+    }
+}
 if (Test-Path -LiteralPath (Join-Path $projectRoot 'LICENSE') -PathType Leaf) {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $releaseRoot
 }

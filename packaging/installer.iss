@@ -1,5 +1,5 @@
 #define MyAppName "RenpyThief 非官方翻译补丁"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3.0"
 #define MyAppPublisher "KangZENG50025543"
 #define MyAppURL "https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch"
 #define MyAppExeName "RenpyThiefPatch.exe"
@@ -32,7 +32,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDirectory}
-OutputBaseFilename=RenpyThiefPatch-v1.0.2-setup-x64
+OutputBaseFilename=RenpyThiefPatch-v1.0.3.0-setup-x64
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -43,12 +43,12 @@ AppMutex=RenpyThiefUnofficialPatch.Gui.v1
 CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
-VersionInfoVersion=1.0.2.0
+VersionInfoVersion=1.0.3.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} 安装程序
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
-VersionInfoOriginalFileName=RenpyThiefPatch-v1.0.2-setup-x64.exe
+VersionInfoOriginalFileName=RenpyThiefPatch-v1.0.3.0-setup-x64.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -71,3 +71,4 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; WorkingDi
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\router\runtime"
 Type: files; Name: "{app}\router\bridge_requests.log"
+Type: filesandordirs; Name: "{localappdata}\RenpyThiefUnofficialPatch\6.7.8Runtime"

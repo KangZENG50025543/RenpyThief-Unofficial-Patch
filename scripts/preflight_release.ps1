@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.2',
+    [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
+    [string]$Version = '1.0.3.0',
 
     [string]$Python = 'python.exe',
 
@@ -220,7 +220,9 @@ try {
         'SOURCE_AVAILABILITY.md',
         'THIRD_PARTY_SOURCE_MANIFEST.txt',
         'THIRD_PARTY_NOTICES.md',
-        'DEPENDENCIES.txt'
+        'DEPENDENCIES.txt',
+        '6.7.8Origin\RenpyThief.exe',
+        '6.7.8Origin\README.txt'
     )
     $missingEntries = @($requiredEntries | Where-Object {
         ($prefix + $_) -notin $entryNames
@@ -229,9 +231,15 @@ try {
         throw "Release ZIP is missing: $($missingEntries -join ', ')"
     }
     $forbiddenReleasePattern = '(?i)(^|/)(API(?:_siliconflow)?\.txt|[^/]*_api\.txt|api_[^/]*\.txt|[^/]*(?:token|secret)[^/]*\.txt|user|hwid|settings\.json|RenpyThief\.exe|RenpyUpdater\.exe|RenpyThief(?:[_-][^/]*)?\.zip|[^/]+\.(?:log|pdb|pcap|pcapng|har|dmp|etl))$'
+    $allowedBundledOrigin = '(?i)/6\.7\.8Origin/(?:RenpyThief|RenpyUpdater)\.exe$'
     $forbiddenArchiveEntries = @($entryNames | ForEach-Object {
         $_.Replace($separator, '/')
-    } | Where-Object { $_ -match $forbiddenReleasePattern })
+    } | Where-Object {
+        if ($_ -match '(?i)/6\.7\.8Origin/') {
+            return $_ -match '(?i)(^|/)(user|hwid|settings\.json|API(?:_siliconflow)?\.txt|[^/]*_api\.txt|api_[^/]*\.txt)$'
+        }
+        ($_ -match $forbiddenReleasePattern) -and ($_ -notmatch $allowedBundledOrigin)
+    })
     if ($forbiddenArchiveEntries.Count -gt 0) {
         throw "Forbidden release entries: $($forbiddenArchiveEntries -join ', ')"
     }

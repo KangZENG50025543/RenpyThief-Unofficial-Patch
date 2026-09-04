@@ -1,4 +1,6 @@
-# v1.0.2 — 全新原版可走我的 API，并支持三个自定义提示词
+# v1.0.3.0 — 测试版：内置干净 6.7.8，「我的 API」自动使用
+
+这是 **测试版**（版本号末尾 `.0` 表示测试中）。验证通过后会原样打成 `v1.0.3`，请不要把它当作正式版。
 
 ## 普通用户请下载这里
 
@@ -6,29 +8,32 @@
 
 | 文件 | 用途 |
 |---|---|
-| **`RenpyThiefPatch-v1.0.2-setup-x64.exe`** | 推荐；带安装向导、开始菜单、可选桌面快捷方式和卸载入口 |
-| **`RenpyThiefPatch-v1.0.2-portable-x64.zip`** | 免安装；完整解压后运行 `RenpyThiefPatch.exe` |
+| **`RenpyThiefPatch-v1.0.3.0-setup-x64.exe`** | 推荐；带安装向导、开始菜单、可选桌面快捷方式和卸载入口 |
+| **`RenpyThiefPatch-v1.0.3.0-portable-x64.zip`** | 免安装；完整解压后运行 `RenpyThiefPatch.exe` |
 
-`SHA256SUMS.txt` 用于校验安装器和便携 ZIP。PyQt5、Qt、MinHook、Python 的锁定对应源码与 **v0.1.2 完全相同**，请到 [v0.1.2 Release](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 下载，或阅读本 Release 的 `THIRD_PARTY_SOURCE_REFERENCE.txt`。GitHub 自动显示的 **Source code (zip/tar.gz)** 是本补丁源码，**不是普通用户要安装的程序**。
+因安装包内含干净 RenpyThief 6.7.8，体积会明显大于 1.0.2。`SHA256SUMS.txt` 用于校验安装器和便携 ZIP。PyQt5、Qt、MinHook、Python 的锁定对应源码与 **v0.1.2 完全相同**，请到 [v0.1.2 Release](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 下载，或阅读本 Release 的 `THIRD_PARTY_SOURCE_REFERENCE.txt`。GitHub 自动显示的 **Source code (zip/tar.gz)** 是本补丁源码，**不是普通用户要安装的程序**。
 
-本项目不包含 RenpyThief。当前只实测 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。官方免费额度仍按原版登录；「我的 API」翻译走用户自己的云服务或本机模型。本补丁不代替原版付费授权，也不会把翻译静默切到官方服务。
+当前只实测 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。官方免费额度仍使用你自己的原版程序并按原版登录；「我的 API」使用补丁附带的干净 6.7.8 工作副本，翻译走用户自己的云服务或本机模型。本补丁不代替原版付费授权，也不会把翻译静默切到官方服务。
 
-## v1.0.2 更新内容
+## v1.0.3.0 更新内容
 
-- 「我的 API」且兼容性保护开启时：若原版目录还没有登录记录（`user` 缺失或为空），启动前会写入一份仅用于本机的会话标记，全新 6.7.8 也可以拖入游戏。已有非空登录记录不会被覆盖。官方额度模式不会写入，仍须按原版登录。
-- AI 提示词在两个内置模板之外，提供自定义 1 / 2 / 3 三个可分别保存的槽位。旧版「自定义」会迁到自定义 1。
+- 「我的 API」不再要求浏览你电脑上的原版：补丁会使用内置的干净 6.7.8（`6.7.8Origin`），启动前复制到 `%LOCALAPPDATA%\RenpyThiefUnofficialPatch\6.7.8Runtime`，不读写你已有的原版目录。界面路径栏会锁定为内置副本。
+- 「官方免费额度」仍然浏览并启动你自己的 `RenpyThief.exe`，登录与额度逻辑不变。
+- 继续包含 v1.0.2：全新内置副本在兼容性保护开启时写入仅用于本机的会话标记；三个可分别保存的自定义提示词槽位。
 - 继续包含 v1.0.1 的修复：64 位补丁 GUI 不再把 Qt 插件路径泄漏给 32 位原版。
 
 ## 首次使用
 
 1. 安装版完成向导后从桌面或开始菜单启动；便携版先完整解压，再运行 `RenpyThiefPatch.exe`。
-2. 点击“浏览…”，选择你自己的 RenpyThief 6.7.8 x86 的 `RenpyThief.exe`。补丁不要安装或解压到原版目录。
+2. 选择翻译来源：
+   - 官方免费额度：点击“浏览…”，选择你自己的 RenpyThief 6.7.8 x86 的 `RenpyThief.exe`。
+   - 我的 API：路径会自动锁定为内置干净 6.7.8，无需再选你电脑上的原版。
 3. 建议保持“启用兼容性保护（推荐）”开启。
-4. 选择“官方免费额度”，或选择“我的 API”并配置 Provider。使用本机模型时先启动 Ollama（或同类服务）并加载模型，再点“测试 API”。
-5. 点击启动；官方额度模式如出现原版登录页，请按原版要求完成登录。「我的 API」在兼容性保护开启时，全新原版一般不再需要先登录官方账号。
+4. 使用「我的 API」时选择 Provider 并填写凭据。使用本机模型时先启动 Ollama（或同类服务）并加载模型，再点“测试 API”。
+5. 点击启动；官方额度模式如出现原版登录页，请按原版要求完成登录。「我的 API」在兼容性保护开启时，全新内置副本一般不再需要先登录官方账号。
 6. **等待补丁明确显示“已就绪，可以拖入游戏”后，再把游戏拖入 RenpyThief。**
 
-切换翻译线路前必须先关闭游戏和 RenpyThief，再从补丁重新启动；当前不支持热切换。
+补丁不要安装或解压到你自己的原版目录。切换翻译线路前必须先关闭游戏和 RenpyThief，再从补丁重新启动；当前不支持热切换。安装版卸载时会删除本机 `6.7.8Runtime` 工作副本，不会删除你自己的原版程序。
 
 ## API 与隐私提示
 
@@ -60,4 +65,4 @@
 
 ## 许可证与对应源码
 
-项目源码采用 `GPL-3.0-only`，第三方组件适用各自许可证。`v1.0.2` 标签对应本次安装版和便携版的补丁源码。PyQt5 5.15.11、Qt 5.15.2、MinHook 1.3.4 和 CPython 3.12.7 的锁定源码归档与 v0.1.2 字节级相同，不再重复上传；请从 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 获取并核对 `SOURCE_ARCHIVES.SHA256`。这些源码附件面向开发者和审计者，普通用户无需下载。
+项目源码采用 `GPL-3.0-only`，第三方组件适用各自许可证。`v1.0.3.0` 标签对应本次测试安装版和便携版的补丁源码。PyQt5 5.15.11、Qt 5.15.2、MinHook 1.3.4 和 CPython 3.12.7 的锁定源码归档与 v0.1.2 字节级相同，不再重复上传；请从 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 获取并核对 `SOURCE_ARCHIVES.SHA256`。这些源码附件面向开发者和审计者，普通用户无需下载。

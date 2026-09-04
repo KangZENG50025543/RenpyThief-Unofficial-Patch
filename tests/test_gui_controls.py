@@ -126,6 +126,34 @@ class GuiControlTests(unittest.TestCase):
         self.assertIn("127.0.0.1", self.window.base_url_edit.text())
         self.assertIn("可留空", self.window.credential_labels[0].text())
 
+    def test_custom_mode_locks_bundled_origin_and_keeps_official_path(self) -> None:
+        official = r"C:\Games\RenpyThief.exe"
+        self.window.official_radio.setChecked(True)
+        self.window.translator_path.setText(official)
+        fake = Path(self.temporary_directory.name) / "6.7.8Origin" / "RenpyThief.exe"
+        fake.parent.mkdir(parents=True)
+        fake.write_bytes(b"bundled")
+        with (
+            patch(
+                "renpy_patch.main_window.bundled_origin_exe", return_value=fake
+            ),
+            patch(
+                "renpy_patch.main_window.bundled_origin_is_present",
+                return_value=True,
+            ),
+        ):
+            self.window.custom_radio.setChecked(True)
+            self.assertTrue(self.window.translator_path.isReadOnly())
+            self.assertFalse(self.window.browse_button.isEnabled())
+            self.assertEqual(self.window.translator_path.text(), str(fake))
+            settings = self.window._collect_settings()
+            self.assertEqual(settings.mode, "custom")
+            self.assertEqual(settings.translator_path, official)
+            self.window.official_radio.setChecked(True)
+        self.assertEqual(self.window.translator_path.text(), official)
+        self.assertFalse(self.window.translator_path.isReadOnly())
+        self.assertTrue(self.window.browse_button.isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()

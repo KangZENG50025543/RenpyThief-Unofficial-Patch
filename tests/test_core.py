@@ -550,72 +550,86 @@ class ChildEnvironmentSanitizationTests(unittest.TestCase):
         self.assertIn(r"C:\Windows\System32", parts)
 
 
+def _custom_bundle_layout(root: Path) -> tuple[Path, Path, Path]:
+    app = root / "app"
+    data = root / "data"
+    origin = app / "6.7.8Origin"
+    origin.mkdir(parents=True)
+    (origin / "RenpyThief.exe").write_bytes(b"bundled")
+    router = app / "router" / "start_routed_translator.ps1"
+    router.parent.mkdir(parents=True)
+    router.write_text("# test", encoding="utf-8")
+    return app, data, router
+
+
 @unittest.skipUnless(sys.platform == "win32", "Windows launcher contract")
 class LauncherCommandTests(unittest.TestCase):
+    def _custom_command(
+        self, settings: AppSettings, root: Path, *, with_bridge: bool = False
+    ) -> tuple[list[str], Path, Path, Path]:
+        app, data, router = _custom_bundle_layout(root)
+        if with_bridge:
+            (app / "router" / "translate_bridge.exe").write_bytes(b"test")
+        with (
+            mock.patch("renpy_patch.bundled.application_directory", return_value=app),
+            mock.patch("renpy_patch.bundled.app_data_directory", return_value=data),
+        ):
+            return build_custom_command(settings, router), app, data, router
+
     def test_command_is_argument_list_and_contains_no_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            translator = root / "RenpyThief.exe"
-            translator.write_bytes(b"test")
-            router = root / "router" / "start_routed_translator.ps1"
-            router.parent.mkdir()
-            router.write_text("# test", encoding="utf-8")
             settings = AppSettings(
-                translator_path=str(translator),
+                translator_path=r"C:\Games\RenpyThief.exe",
                 mode="custom",
                 provider=ProviderId.DEEPSEEK.value,
             )
-            command = build_custom_command(settings, router)
+            command, _app, data, router = self._custom_command(
+                settings, Path(directory)
+            )
+            runtime = data / "6.7.8Runtime" / "RenpyThief.exe"
             self.assertIn("-File", command)
             self.assertIn(str(router), command)
-            self.assertIn("-TranslatorPath", command)
+            self.assertEqual(
+                command[command.index("-TranslatorPath") + 1],
+                str(runtime.resolve()),
+            )
             self.assertEqual(command[command.index("-BlockUpdates") + 1], "true")
             self.assertNotIn("UPSTREAM_API_KEY", " ".join(command))
             self.assertNotIn("sk-", " ".join(command))
 
     def test_packaged_bridge_is_selected_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            translator = root / "RenpyThief.exe"
-            translator.write_bytes(b"test")
-            router = root / "router" / "start_routed_translator.ps1"
-            router.parent.mkdir()
-            router.write_text("# test", encoding="utf-8")
-            bridge = router.parent / "translate_bridge.exe"
-            bridge.write_bytes(b"test")
-            settings = AppSettings(translator_path=str(translator), mode="custom")
-            command = build_custom_command(settings, router)
+            settings = AppSettings(
+                translator_path=r"C:\Games\RenpyThief.exe", mode="custom"
+            )
+            command, _app, _data, _router = self._custom_command(
+                settings, Path(directory), with_bridge=True
+            )
             index = command.index("-BridgeExecutable")
-            self.assertEqual(command[index + 1], str(bridge.resolve()))
+            self.assertTrue(command[index + 1].endswith("translate_bridge.exe"))
 
     def test_update_guard_can_be_disabled_for_custom_launch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            translator = root / "RenpyThief.exe"
-            translator.write_bytes(b"test")
-            router = root / "router" / "start_routed_translator.ps1"
-            router.parent.mkdir()
-            router.write_text("# test", encoding="utf-8")
             settings = AppSettings(
-                translator_path=str(translator), mode="custom", block_updates=False
+                translator_path=r"C:\Games\RenpyThief.exe",
+                mode="custom",
+                block_updates=False,
             )
-            command = build_custom_command(settings, router)
+            command, _app, _data, _router = self._custom_command(
+                settings, Path(directory)
+            )
             self.assertEqual(command[command.index("-BlockUpdates") + 1], "false")
 
     def test_dedicated_provider_selects_adapter_mode_without_credentials_on_argv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            translator = root / "RenpyThief.exe"
-            translator.write_bytes(b"test")
-            router = root / "router" / "start_routed_translator.ps1"
-            router.parent.mkdir()
-            router.write_text("# test", encoding="utf-8")
             settings = AppSettings(
-                translator_path=str(translator),
+                translator_path=r"C:\Games\RenpyThief.exe",
                 mode="custom",
                 provider=ProviderId.YOUDAO.value,
             )
-            command = build_custom_command(settings, router)
+            command, _app, _data, _router = self._custom_command(
+                settings, Path(directory)
+            )
             self.assertEqual(command[command.index("-Mode") + 1], "youdao")
             self.assertEqual(
                 command[command.index("-PayloadProfile") + 1], "openai"
