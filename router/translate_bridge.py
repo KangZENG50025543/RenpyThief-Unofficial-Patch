@@ -761,7 +761,360 @@ class Translator:
         )
 
 
-def make_handler(translator: Translator, log_content: bool):
+OFFICIAL_TRANSLATE_PREFIX = "/official-translate/"
+OFFICIAL_TRANSLATE_ENDPOINTS = {
+    "sendTranslate",
+    "sendMenuTranslate",
+    "sendOCRTranslate",
+}
+MAX_OFFICIAL_BODY_BYTES = 1024 * 1024
+_OFFICIAL_TEXT_KEYS = (
+    "text",
+    "srcText",
+    "sourceText",
+    "originText",
+    "content",
+    "q",
+)
+_OFFICIAL_FROM_KEYS = ("from", "srcLang", "fromLang", "sourceLang", "sl")
+_OFFICIAL_TO_KEYS = ("to", "destLang", "toLang", "targetLang", "tl")
+_OFFICIAL_SKIP_TEXT_KEYS = {
+    "from",
+    "to",
+    "src",
+    "srcLang",
+    "destLang",
+    "fromLang",
+    "toLang",
+    "sourceLang",
+    "targetLang",
+    "sl",
+    "tl",
+    "lang",
+    "type",
+    "token",
+    "userId",
+    "userid",
+    "user_id",
+    "password",
+    "hwid",
+    "sign",
+    "nonce",
+    "key",
+    "apiKey",
+    "apikey",
+    "authorization",
+    "cookie",
+    "session",
+    "levelId",
+    "level_id",
+    "isChatGPT",
+    "username",
+    "userName",
+    "remainCharCount",
+    "extraCharCount",
+    "gptTrialUser",
+    "data",
+    "encrypted",
+}
+_OFFICIAL_LANG_ALIASES = {
+    "日语": "ja",
+    "日文": "ja",
+    "日本語": "ja",
+    "中文": "zh",
+    "简体": "zh",
+    "简中": "zh-hans",
+    "简体中文": "zh-hans",
+    "繁体": "zh-hant",
+    "繁中": "zh-hant",
+    "英语": "en",
+    "英文": "en",
+    "韩语": "ko",
+    "韩文": "ko",
+    "自动": "auto",
+}
+
+
+class OfficialTranslateRequest:
+    def __init__(
+        self,
+        text: str,
+        source: str,
+        target: str,
+        type_value: int,
+        keys: tuple[str, ...],
+        encrypted: bool = False,
+        data_chars: int = 0,
+        data_preview: str = "",
+    ) -> None:
+        self.text = text
+        self.source = source
+        self.target = target
+        self.type_value = type_value
+        self.keys = keys
+        self.encrypted = encrypted
+        self.data_chars = data_chars
+        self.data_preview = data_preview
+
+
+def official_translate_endpoint(path: str) -> str | None:
+    if path == "/official-translate":
+        return "sendTranslate"
+    if not path.startswith(OFFICIAL_TRANSLATE_PREFIX):
+        return None
+    endpoint = path[len(OFFICIAL_TRANSLATE_PREFIX) :]
+    if endpoint in OFFICIAL_TRANSLATE_ENDPOINTS:
+        return endpoint
+    return None
+
+
+def preview_text(value: str, limit: int = 80) -> str:
+    compact = value.replace("\r", "\\r").replace("\n", "\\n")
+    if len(compact) > limit:
+        return compact[:limit] + "..."
+    return compact
+
+
+def classify_blob(value: str) -> str:
+    if not value:
+        return "empty"
+    sample = value[:120]
+    hex_chars = sum(character in "0123456789abcdefABCDEF" for character in sample)
+    b64_chars = sum(
+        character.isalnum() or character in "+/=" for character in sample
+    )
+    if hex_chars == len(sample) and len(sample) >= 16:
+        return "hex-like"
+    if b64_chars == len(sample) and len(sample) >= 16:
+        return "base64-like"
+    return "text-like"
+
+
+def _truthy_flag(value: object) -> bool:
+    if value is True or value == 1:
+        return True
+    if isinstance(value, str) and value.strip().lower() in {"1", "true", "yes"}:
+        return True
+    if isinstance(value, list) and value:
+        return _truthy_flag(value[0])
+    return False
+
+
+def format_official_keys(keys: tuple[str, ...]) -> str:
+    safe = [
+        key
+        for key in keys
+        if key and all(character.isalnum() or character in "-_" for character in key)
+    ]
+    return "|" + "|".join(safe) + "|" if safe else "|"
+
+
+def official_success_envelope(text: str, type_value: int) -> dict:
+    return {
+        "status": 200,
+        "msg": "OK",
+        "data": {
+            "text": text,
+            "levelId": 1,
+            "type": type_value,
+            "isChatGPT": False,
+            "remainCharCount": 999999999,
+            "extraCharCount": 0,
+            "gptTrialUser": False,
+        },
+    }
+
+
+def official_error_envelope(status: int = 500) -> dict:
+    return {"status": status, "msg": "local", "data": {}}
+
+
+def _first_mapping_string(mapping: dict, keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value:
+            return value
+        if isinstance(value, list) and value and isinstance(value[0], str) and value[0]:
+            return value[0]
+    return ""
+
+
+def _walk_keys(value: object, names: list[str], depth: int = 0) -> None:
+    if depth > 4:
+        return
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str):
+                names.append(key)
+            _walk_keys(child, names, depth + 1)
+    elif isinstance(value, list):
+        for item in value[:8]:
+            _walk_keys(item, names, depth + 1)
+
+
+def _flatten_dicts(value: object, out: list[dict], depth: int = 0) -> None:
+    if depth > 4:
+        return
+    if isinstance(value, dict):
+        out.append(value)
+        for child in value.values():
+            _flatten_dicts(child, out, depth + 1)
+    elif isinstance(value, list):
+        for item in value[:8]:
+            _flatten_dicts(item, out, depth + 1)
+
+
+def _guess_text(mapping: dict) -> str:
+    found = _first_mapping_string(mapping, _OFFICIAL_TEXT_KEYS)
+    if found:
+        return found
+    candidates: list[str] = []
+    for key, value in mapping.items():
+        if not isinstance(key, str) or key in _OFFICIAL_SKIP_TEXT_KEYS:
+            continue
+        if isinstance(value, str) and value:
+            candidates.append(value)
+        elif isinstance(value, list) and value and isinstance(value[0], str) and value[0]:
+            candidates.append(value[0])
+    if len(candidates) == 1:
+        return candidates[0]
+    return ""
+
+
+def _normalize_official_lang(value: str, default: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return default
+    if raw in _OFFICIAL_LANG_ALIASES:
+        return _OFFICIAL_LANG_ALIASES[raw]
+    lowered = raw.lower().replace("_", "-")
+    if lowered in _CANONICAL_ALIASES:
+        return _CANONICAL_ALIASES[lowered]
+    if (
+        len(raw) <= MAX_LANGUAGE_CHARS
+        and raw.isascii()
+        and all(character.isalnum() or character in "-_" for character in raw)
+    ):
+        return lowered
+    return default
+
+
+def _parse_type_value(mapping: dict) -> int:
+    raw_type = mapping.get("type")
+    if isinstance(raw_type, bool):
+        return 0
+    if isinstance(raw_type, int):
+        return int(raw_type)
+    if isinstance(raw_type, str) and raw_type.isdigit():
+        return int(raw_type)
+    if isinstance(raw_type, list) and raw_type:
+        item = raw_type[0]
+        if isinstance(item, bool):
+            return 0
+        if isinstance(item, int):
+            return int(item)
+        if isinstance(item, str) and item.isdigit():
+            return int(item)
+    return 0
+
+
+def extract_official_translate_request(
+    body: bytes,
+    content_type: str,
+    query: dict[str, list[str]],
+) -> OfficialTranslateRequest:
+    keys = list(query.keys())
+    mappings: list[dict] = [query]
+    media_type = (content_type or "").split(";", 1)[0].strip().lower()
+    parsed_object: object | None = None
+    if body:
+        looks_json = media_type in {"application/json", "text/json", ""} or body[:1] in {
+            b"{",
+            b"[",
+        }
+        if looks_json:
+            try:
+                parsed_object = json.loads(body.decode("utf-8-sig"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                parsed_object = None
+        if parsed_object is None:
+            try:
+                form = urllib.parse.parse_qs(
+                    body.decode("utf-8-sig"),
+                    keep_blank_values=True,
+                    max_num_fields=32,
+                )
+                if form:
+                    parsed_object = form
+            except (UnicodeDecodeError, ValueError):
+                parsed_object = None
+    if parsed_object is not None:
+        _walk_keys(parsed_object, keys)
+        _flatten_dicts(parsed_object, mappings)
+
+    text = ""
+    source = ""
+    target = ""
+    type_value = 0
+    encrypted = False
+    data_chars = 0
+    data_preview = ""
+    for mapping in mappings:
+        if _truthy_flag(mapping.get("encrypted")):
+            encrypted = True
+        raw_data = mapping.get("data")
+        if isinstance(raw_data, str) and raw_data and not data_preview:
+            data_chars = len(raw_data)
+            data_preview = preview_text(raw_data)
+        elif (
+            isinstance(raw_data, list)
+            and raw_data
+            and isinstance(raw_data[0], str)
+            and raw_data[0]
+            and not data_preview
+        ):
+            data_chars = len(raw_data[0])
+            data_preview = preview_text(raw_data[0])
+        if not text:
+            text = _guess_text(mapping)
+        if not source:
+            source = _first_mapping_string(mapping, _OFFICIAL_FROM_KEYS)
+        if not target:
+            target = _first_mapping_string(mapping, _OFFICIAL_TO_KEYS)
+        if type_value == 0:
+            type_value = _parse_type_value(mapping)
+
+    if encrypted:
+        text = ""
+    unique_keys = tuple(dict.fromkeys(keys))
+    return OfficialTranslateRequest(
+        text=text,
+        source=_normalize_official_lang(source, "auto"),
+        target=_normalize_official_lang(target, "zh"),
+        type_value=type_value,
+        keys=unique_keys,
+        encrypted=encrypted,
+        data_chars=data_chars,
+        data_preview=data_preview,
+    )
+
+
+def read_http_body(handler: BaseHTTPRequestHandler, max_bytes: int) -> bytes:
+    raw_length = handler.headers.get("Content-Length", "0") or "0"
+    try:
+        length = int(raw_length)
+    except ValueError as error:
+        raise ValueError("invalid content length") from error
+    if length < 0 or length > max_bytes:
+        raise ValueError("body too large")
+    if length == 0:
+        return b""
+    return handler.rfile.read(length)
+
+
+def make_handler(
+    translator: Translator, log_content: bool, tap_content: bool = False
+):
     class Handler(BaseHTTPRequestHandler):
         server_version = "RenpyRouteBridge/1.0"
         protocol_version = "HTTP/1.1"
@@ -777,8 +1130,146 @@ def make_handler(translator: Translator, log_content: bool):
             self.wfile.write(body)
             self.close_connection = True
 
+        def send_json(self, status: int, payload: dict) -> None:
+            body = json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+            self.close_connection = True
+
+        def handle_official_translate(self, endpoint: str, body: bytes) -> None:
+            parsed = urllib.parse.urlsplit(self.path)
+            try:
+                query = urllib.parse.parse_qs(
+                    parsed.query, keep_blank_values=True, max_num_fields=16
+                )
+            except ValueError:
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST, official_error_envelope(400)
+                )
+                return
+            fields = extract_official_translate_request(
+                body, self.headers.get("Content-Type", ""), query
+            )
+            key_list = format_official_keys(fields.keys)
+            if tap_content:
+                append_log(
+                    f"TAP official endpoint={endpoint} encrypted="
+                    f"{int(fields.encrypted)} keys={key_list} "
+                    f"chars={len(fields.text)} data_chars={fields.data_chars} "
+                    f"blob={classify_blob(fields.data_preview or fields.text)} "
+                    f"preview={fields.data_preview or preview_text(fields.text)}"
+                )
+            if fields.encrypted:
+                append_log(
+                    f"OFFICIAL encrypted_skip endpoint={endpoint} keys={key_list} "
+                    f"data_chars={fields.data_chars} "
+                    f"blob={classify_blob(fields.data_preview)}"
+                )
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST, official_error_envelope(400)
+                )
+                return
+            if not fields.text:
+                append_log(
+                    f"OFFICIAL missing_text endpoint={endpoint} keys={key_list}"
+                )
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST, official_error_envelope(400)
+                )
+                return
+            if (
+                len(fields.source) > MAX_LANGUAGE_CHARS
+                or len(fields.target) > MAX_LANGUAGE_CHARS
+            ):
+                append_log(
+                    f"OFFICIAL bad_language endpoint={endpoint} keys={key_list}"
+                )
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST, official_error_envelope(400)
+                )
+                return
+            if len(fields.text) > MAX_TEXT_CHARS:
+                append_log(
+                    f"OFFICIAL text_too_long endpoint={endpoint} "
+                    f"chars={len(fields.text)} keys={key_list}"
+                )
+                self.send_json(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    official_error_envelope(413),
+                )
+                return
+
+            started = time.perf_counter()
+            text_hash = hashlib.sha256(fields.text.encode("utf-8")).hexdigest()
+            try:
+                translated = translator.translate(
+                    fields.text, fields.source, fields.target
+                )
+                elapsed = (time.perf_counter() - started) * 1000
+                append_log(
+                    f"OFFICIAL OK endpoint={endpoint} mode={translator.mode} "
+                    f"from={fields.source} to={fields.target} "
+                    f"chars={len(fields.text)} result_chars={len(translated)} "
+                    f"ms={elapsed:.1f} text_sha256={text_hash} keys={key_list}"
+                )
+                if tap_content:
+                    append_log(
+                        f"TAP official-result endpoint={endpoint} "
+                        f"chars={len(fields.text)} result_chars={len(translated)} "
+                        f"text={preview_text(fields.text)} "
+                        f"result={preview_text(translated)}"
+                    )
+                self.send_json(
+                    HTTPStatus.OK,
+                    official_success_envelope(translated, fields.type_value),
+                )
+            except urllib.error.HTTPError as error:
+                elapsed = (time.perf_counter() - started) * 1000
+                status = error.code if isinstance(error.code, int) else "unknown"
+                error.close()
+                append_log(
+                    f"OFFICIAL ERROR endpoint={endpoint} mode={translator.mode} "
+                    f"chars={len(fields.text)} ms={elapsed:.1f} "
+                    f"type=HTTPError upstream_status={status} "
+                    f"text_sha256={text_hash} keys={key_list}"
+                )
+                self.send_json(
+                    HTTPStatus.BAD_GATEWAY, official_error_envelope(500)
+                )
+            except (
+                IndexError,
+                KeyError,
+                TypeError,
+                ValueError,
+                RuntimeError,
+                TimeoutError,
+                OSError,
+                urllib.error.URLError,
+            ) as error:
+                elapsed = (time.perf_counter() - started) * 1000
+                append_log(
+                    f"OFFICIAL ERROR endpoint={endpoint} mode={translator.mode} "
+                    f"chars={len(fields.text)} ms={elapsed:.1f} "
+                    f"type={type(error).__name__} text_sha256={text_hash} "
+                    f"keys={key_list}"
+                )
+                self.send_json(
+                    HTTPStatus.BAD_GATEWAY, official_error_envelope(500)
+                )
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
             parsed = urllib.parse.urlsplit(self.path)
+            official = official_translate_endpoint(parsed.path)
+            if official:
+                self.handle_official_translate(official, b"")
+                return
             if parsed.path == "/health":
                 self.send_text(HTTPStatus.OK, "ok")
                 return
@@ -819,6 +1310,13 @@ def make_handler(translator: Translator, log_content: bool):
                 if log_content:
                     event += f" text={text} result={translated}"
                 append_log(event)
+                if tap_content:
+                    append_log(
+                        f"TAP translate from={source} to={target} "
+                        f"chars={len(text)} result_chars={len(translated)} "
+                        f"text={preview_text(text, limit=4096)} "
+                        f"result={preview_text(translated, limit=4096)}"
+                    )
                 self.send_text(HTTPStatus.OK, translated)
             except urllib.error.HTTPError as error:
                 elapsed = (time.perf_counter() - started) * 1000
@@ -849,6 +1347,22 @@ def make_handler(translator: Translator, log_content: bool):
                     f"type={type(error).__name__} text_sha256={text_hash}"
                 )
                 self.send_text(HTTPStatus.BAD_GATEWAY, "translation failed")
+
+        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+            parsed = urllib.parse.urlsplit(self.path)
+            official = official_translate_endpoint(parsed.path)
+            if not official:
+                self.send_text(HTTPStatus.NOT_FOUND, "not found")
+                return
+            try:
+                body = read_http_body(self, MAX_OFFICIAL_BODY_BYTES)
+            except ValueError:
+                self.send_json(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    official_error_envelope(413),
+                )
+                return
+            self.handle_official_translate(official, body)
 
         def log_message(self, _format: str, *_args: object) -> None:
             return
@@ -983,7 +1497,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.set_defaults(
         log_content=os.getenv("BRIDGE_LOG_CONTENT", "").lower()
-        in {"1", "true", "yes"}
+        in {"1", "true", "yes"},
+        tap_content=os.getenv("BRIDGE_TAP_CONTENT", "").lower()
+        in {"1", "true", "yes"},
+    )
+    parser.add_argument(
+        "--tap-content",
+        dest="tap_content",
+        action="store_true",
+        help="log short source/result previews for diagnosis; not full bodies",
     )
     args = parser.parse_args()
     if args.host != "127.0.0.1":
@@ -1104,7 +1626,7 @@ def main() -> None:
     translator = Translator(args)
     server = BoundedThreadingHTTPServer(
         (args.host, args.port),
-        make_handler(translator, args.log_content),
+        make_handler(translator, args.log_content, args.tap_content),
         args.max_concurrency,
     )
     append_log(
@@ -1116,7 +1638,7 @@ def main() -> None:
         f"max_concurrency={args.max_concurrency} "
         f"upstream_concurrency={args.upstream_concurrency} "
         f"cache_entries={args.cache_entries} cache_bytes={args.cache_bytes} "
-        f"log_content={int(args.log_content)}"
+        f"log_content={int(args.log_content)} tap_content={int(args.tap_content)}"
     )
     print(f"bridge listening on http://{args.host}:{args.port}/translate ({args.mode})")
     try:

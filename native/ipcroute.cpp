@@ -15,6 +15,7 @@
 #include <string>
 
 #include "MinHook.h"
+#include "ipcroute_request.h"
 
 namespace {
 
@@ -41,6 +42,7 @@ struct WorkerContext {
 
 using WSAAcceptFn = SOCKET (WSAAPI*)(SOCKET, sockaddr*, LPINT,
                                       LPCONDITIONPROC, DWORD_PTR);
+using AcceptFn = SOCKET (WSAAPI*)(SOCKET, sockaddr*, int*);
 using ListenFn = int (WSAAPI*)(SOCKET, int);
 
 std::wstring g_dir;
@@ -50,6 +52,7 @@ CRITICAL_SECTION g_stateLock;
 bool g_stateLockReady = false;
 RouteMode g_mode = RouteMode::Observe;
 WSAAcceptFn g_wsaAccept = nullptr;
+AcceptFn g_accept = nullptr;
 ListenFn g_listen = nullptr;
 std::atomic<long> g_ready{0};
 std::atomic<unsigned short> g_dynamicBase{0};
@@ -110,7 +113,7 @@ void LoadConfiguration()
     g_mode = mode == L"hijack" ? RouteMode::Hijack : RouteMode::Observe;
     Log(std::string("configuration mode=") +
         (g_mode == RouteMode::Hijack ? "hijack" : "observe") +
-        " target=dynamic-loopback-base bridge=127.0.0.1:19899");
+        " target=dynamic-loopback-group bridge=127.0.0.1:19899");
 }
 
 bool GetSocketAddress(SOCKET socket, bool peer, sockaddr_storage& storage,
@@ -148,16 +151,21 @@ unsigned short AddressPort(const sockaddr_storage& storage)
     return 0;
 }
 
+bool IsDynamicGroupPort(unsigned short port)
+{
+    const unsigned short base = g_dynamicBase.load();
+    return base != 0 && port >= base &&
+           static_cast<unsigned>(port) <= static_cast<unsigned>(base) + 2U;
+}
+
 bool IsTargetListener(SOCKET listener)
 {
     const int saved = WSAGetLastError();
     sockaddr_storage local{};
     int length = 0;
-    const unsigned short dynamicBase = g_dynamicBase.load();
-    const bool target = dynamicBase != 0 &&
-                        GetSocketAddress(listener, false, local, length) &&
+    const bool target = GetSocketAddress(listener, false, local, length) &&
                         IsLoopback(local) &&
-                        AddressPort(local) == dynamicBase;
+                        IsDynamicGroupPort(AddressPort(local));
     WSASetLastError(saved);
     return target;
 }
@@ -169,11 +177,10 @@ bool IsTargetConnection(SOCKET socket)
     sockaddr_storage peer{};
     int localLength = 0;
     int peerLength = 0;
-    const unsigned short dynamicBase = g_dynamicBase.load();
-    const bool target = dynamicBase != 0 &&
+    const bool target =
         GetSocketAddress(socket, false, local, localLength) &&
         GetSocketAddress(socket, true, peer, peerLength) && IsLoopback(local) &&
-        IsLoopback(peer) && AddressPort(local) == dynamicBase;
+        IsLoopback(peer) && IsDynamicGroupPort(AddressPort(local));
     WSASetLastError(saved);
     return target;
 }
@@ -369,56 +376,68 @@ bool ReceiveHeaders(SOCKET socket, std::string& request, ULONGLONG deadline)
     return false;
 }
 
-bool HasQueryParameter(const std::string& query, const char* wanted,
-                       bool requireValue)
+std::string FlattenLogText(const std::string& value, size_t limit = 2048)
 {
-    const size_t wantedLength = strlen(wanted);
-    size_t offset = 0;
-    while (offset <= query.size()) {
-        const size_t end = query.find('&', offset);
-        const size_t itemEnd = end == std::string::npos ? query.size() : end;
-        const size_t equals = query.find('=', offset);
-        if (equals != std::string::npos && equals < itemEnd &&
-            equals - offset == wantedLength &&
-            query.compare(offset, wantedLength, wanted) == 0) {
-            return !requireValue || equals + 1 < itemEnd;
+    std::string out;
+    out.reserve(value.size());
+    for (char c : value) {
+        if (c == '\r') {
+            out += "\\r";
+        } else if (c == '\n') {
+            out += "\\n";
+        } else {
+            out.push_back(c);
         }
-        if (end == std::string::npos) break;
-        offset = end + 1;
+        if (out.size() >= limit) {
+            out += "...";
+            break;
+        }
     }
-    return false;
+    return out;
 }
 
-bool ParseTranslationQuery(const std::string& request, std::string& query)
+std::string RequestFirstLine(const std::string& request)
 {
-    const size_t lineEnd = request.find("\r\n");
-    const size_t fallbackEnd = request.find('\n');
-    const size_t end = lineEnd != std::string::npos ? lineEnd : fallbackEnd;
-    if (end == std::string::npos) return false;
+    size_t end = request.find('\n');
+    if (end == std::string::npos) end = request.size();
+    std::string line = request.substr(0, end);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return line;
+}
 
-    const std::string line = request.substr(0, end);
-    const size_t firstSpace = line.find(' ');
-    const size_t secondSpace = firstSpace == std::string::npos
-        ? std::string::npos
-        : line.find(' ', firstSpace + 1);
-    if (firstSpace == std::string::npos || secondSpace == std::string::npos ||
-        line.find(' ', secondSpace + 1) != std::string::npos ||
-        line.compare(0, firstSpace, "GET") != 0) {
-        return false;
+bool ReceiveCompleteRequest(SOCKET socket, std::string& request,
+                            ULONGLONG deadline)
+{
+    if (!ReceiveHeaders(socket, request, deadline)) return false;
+    size_t bodyStart = std::string::npos;
+    const size_t headerEnd = HeaderBlockEnd(request, bodyStart);
+    size_t contentLength = 0;
+    if (!ParseContentLength(request, headerEnd, contentLength) ||
+        bodyStart == std::string::npos) {
+        return true;
     }
-
-    const std::string target =
-        line.substr(firstSpace + 1, secondSpace - firstSpace - 1);
-    const std::string version = line.substr(secondSpace + 1);
-    if (target.size() < 3 || target.compare(0, 2, "/?") != 0 ||
-        (version != "HTTP/1.1" && version != "HTTP/1.0")) {
-        return false;
+    if (contentLength > kMaxRequestBytes) return false;
+    const size_t needed = bodyStart + contentLength;
+    if (needed > kMaxRequestBytes) return false;
+    while (request.size() < needed) {
+        char buffer[4096];
+        const size_t remaining = needed - request.size();
+        const int capacity = static_cast<int>((std::min)(remaining,
+            sizeof(buffer)));
+        const int received = ReceiveAvailable(socket, buffer, capacity, deadline);
+        if (received <= 0) return false;
+        request.append(buffer, static_cast<size_t>(received));
     }
+    if (request.size() > needed) request.resize(needed);
+    return true;
+}
 
-    query = target.substr(2);
-    return HasQueryParameter(query, "from", false) &&
-           HasQueryParameter(query, "to", false) &&
-           HasQueryParameter(query, "text", true);
+std::string DecodedQueryText(const std::string& query)
+{
+    std::string encoded;
+    if (!QueryRawValue(query, "text", encoded)) return {};
+    std::string decoded;
+    return DecodePercent(encoded, decoded) ? decoded : encoded;
 }
 
 bool EqualsAsciiNoCase(const std::string& left, const char* right)
@@ -611,17 +630,54 @@ DWORD WINAPI RouteWorker(void* opaque)
     const char* failureStage = "client_nonblocking";
     bool bridgeResponseReady = false;
     bool success = false;
+    std::string loggedText;
 
     if (SetNonBlocking(client)) {
         failureStage = "client_request_read";
-        if (ReceiveHeaders(client, request,
-                           DeadlineFromNow(kClientTimeoutMs))) {
+        if (ReceiveCompleteRequest(client, request,
+                                  DeadlineFromNow(kClientTimeoutMs))) {
             failureStage = "request_parse";
-            if (ParseTranslationQuery(request, query)) {
+            TranslationRequestShape shape;
+            const bool parsed = ExtractBridgeQuery(request, query, shape);
+            loggedText = parsed ? DecodedQueryText(query) : std::string();
+            std::string bodyLog;
+            size_t bodyStart = std::string::npos;
+            HeaderBlockEnd(request, bodyStart);
+            if (bodyStart != std::string::npos && bodyStart < request.size()) {
+                bodyLog = FlattenLogText(request.substr(bodyStart));
+            }
+            Log(std::string("route inspect ") + DescribeRequestShape(shape) +
+                " parsed=" + (parsed ? "true" : "false") +
+                " first_line=" + FlattenLogText(RequestFirstLine(request)) +
+                (loggedText.empty()
+                     ? ""
+                     : " text=" + FlattenLogText(loggedText)) +
+                (bodyLog.empty() ? "" : " body=" + bodyLog) +
+                " raw=" + FlattenLogText(request));
+            if (parsed) {
                 failureStage = "bridge_fetch";
                 if (FetchBridgeResponse(query, response)) {
                     bridgeResponseReady = true;
                 }
+            } else if (IsEmbedCipherRequest(shape)) {
+                failureStage = "embed_identity";
+                size_t embedBodyStart = std::string::npos;
+                HeaderBlockEnd(request, embedBodyStart);
+                const std::string embedBody =
+                    (embedBodyStart != std::string::npos &&
+                     embedBodyStart < request.size())
+                        ? request.substr(embedBodyStart)
+                        : std::string("{}");
+                response =
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: application/json; charset=utf-8\r\n"
+                    "Content-Length: " +
+                    std::to_string(embedBody.size()) +
+                    "\r\nConnection: close\r\n\r\n" + embedBody;
+                bridgeResponseReady = true;
+                Log("embed identity echoed body_bytes=" +
+                    std::to_string(embedBody.size()) +
+                    " body=" + FlattenLogText(embedBody));
             }
         }
     }
@@ -642,7 +698,8 @@ DWORD WINAPI RouteWorker(void* opaque)
         " request_bytes=" + std::to_string(request.size()) +
         " response_bytes=" + std::to_string(response.size()) +
         " failure_stage=" + failureStage +
-        " elapsed_ms=" + std::to_string(GetTickCount64() - started));
+        " elapsed_ms=" + std::to_string(GetTickCount64() - started) +
+        (loggedText.empty() ? "" : " text=" + FlattenLogText(loggedText)));
     ReleaseSemaphore(g_workerSlots, 1, nullptr);
     return success ? 0 : 1;
 }
@@ -655,15 +712,8 @@ void RejectOwnedConnection(SOCKET socket, int status, const char* reason,
     closesocket(socket);
 }
 
-SOCKET WSAAPI HookWSAAccept(SOCKET listener, sockaddr* address,
-                            LPINT addressLength, LPCONDITIONPROC condition,
-                            DWORD_PTR callbackData)
+SOCKET TakeHijackedClient(SOCKET accepted, int resultError, bool targetListener)
 {
-    const bool targetListener = IsTargetListener(listener);
-    const SOCKET accepted = g_wsaAccept(listener, address, addressLength,
-                                        condition, callbackData);
-    const int resultError = WSAGetLastError();
-
     if (accepted == INVALID_SOCKET || g_mode != RouteMode::Hijack ||
         !targetListener || !IsTargetConnection(accepted)) {
         WSASetLastError(resultError);
@@ -703,6 +753,23 @@ SOCKET WSAAPI HookWSAAccept(SOCKET listener, sockaddr* address,
     return INVALID_SOCKET;
 }
 
+SOCKET WSAAPI HookWSAAccept(SOCKET listener, sockaddr* address,
+                            LPINT addressLength, LPCONDITIONPROC condition,
+                            DWORD_PTR callbackData)
+{
+    const bool targetListener = IsTargetListener(listener);
+    const SOCKET accepted = g_wsaAccept(listener, address, addressLength,
+                                        condition, callbackData);
+    return TakeHijackedClient(accepted, WSAGetLastError(), targetListener);
+}
+
+SOCKET WSAAPI HookAccept(SOCKET listener, sockaddr* address, int* addressLength)
+{
+    const bool targetListener = IsTargetListener(listener);
+    const SOCKET accepted = g_accept(listener, address, addressLength);
+    return TakeHijackedClient(accepted, WSAGetLastError(), targetListener);
+}
+
 DWORD WINAPI Start(void*)
 {
     LoadConfiguration();
@@ -731,10 +798,17 @@ DWORD WINAPI Start(void*)
         ? MH_CreateHook(acceptTarget, reinterpret_cast<void*>(&HookWSAAccept),
                         reinterpret_cast<void**>(&g_wsaAccept))
         : MH_ERROR_NOT_EXECUTABLE;
-    if (listenCreated != MH_OK || acceptCreated != MH_OK) {
+    void* acceptCrtTarget = GetProcAddress(ws2, "accept");
+    const MH_STATUS acceptCrtCreated = acceptCrtTarget
+        ? MH_CreateHook(acceptCrtTarget, reinterpret_cast<void*>(&HookAccept),
+                        reinterpret_cast<void**>(&g_accept))
+        : MH_ERROR_NOT_EXECUTABLE;
+    if (listenCreated != MH_OK || acceptCreated != MH_OK ||
+        acceptCrtCreated != MH_OK) {
         Log("hook create failed listen_status=" +
             std::to_string(listenCreated) + " accept_status=" +
-            std::to_string(acceptCreated));
+            std::to_string(acceptCreated) + " accept_crt_status=" +
+            std::to_string(acceptCrtCreated));
         g_ready.store(-1);
         return 1;
     }

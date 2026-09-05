@@ -20,24 +20,25 @@
 - 默认精确保护 RenpyThief 已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报。关闭前会明确警告。
 - 不修改系统代理、DNS、hosts、证书、防火墙或全局网络设置。
 - 默认日志不记录游戏原文、译文、Authorization、Cookie 或 API Key。
+- Ren'Py 游戏选择「使用内嵌样式」时，「我的 API」在脚本明文层翻译，不解密 RenpyHook 密文包。
 
 ## 下载与安装
 
 > [!IMPORTANT]
-> **当前为测试版 v1.0.3.0**（末尾 `.0` 表示测试中）。验证通过后会原样发布为 v1.0.3。因内置干净 6.7.8，安装器和便携 ZIP 会明显大于以往版本。
+> **当前正式版为 v1.0.3。** 因内置干净 6.7.8，安装器和便携 ZIP 会明显大于以往版本。
 >
 > **普通用户只需下载下面两个程序包之一，不要下载对应源码附件，也不要点击 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`。** PyQt5、Qt、MinHook、Python 等锁定源码目前托管在 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2)，用于履行开源许可证义务，不能直接安装或运行本补丁。
 
 | 下载文件 | 适合谁 | 如何使用 |
 |---|---|---|
-| `RenpyThiefPatch-v1.0.3.0-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
-| `RenpyThiefPatch-v1.0.3.0-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
+| `RenpyThiefPatch-v1.0.3-setup-x64.exe` | 绝大多数用户，**推荐** | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
+| `RenpyThiefPatch-v1.0.3-portable-x64.zip` | 不想安装或需要放在自定义目录的用户 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
 
 两种版本功能相同，均已包含 GUI、翻译 Bridge、原生组件，以及「我的 API」所用的干净 RenpyThief 6.7.8（`6.7.8Origin`）。不需要另外安装 Python。官方免费额度仍请浏览你自己的原版程序。
 
 ### 安装版（推荐）
 
-1. 打开对应的 GitHub Release（当前测试版为 `v1.0.3.0`），下载 `RenpyThiefPatch-v1.0.3.0-setup-x64.exe`。
+1. 打开对应的 GitHub Release（当前正式版为 `v1.0.3`），下载 `RenpyThiefPatch-v1.0.3-setup-x64.exe`。
 2. 可同时下载 `SHA256SUMS.txt`，按下方命令核对文件完整性。
 3. 关闭游戏、RenpyThief 和旧版补丁，再运行安装器。
 4. 按安装向导完成安装。开始菜单快捷方式会自动创建；“创建桌面快捷方式”默认勾选，可按需取消。
@@ -47,7 +48,7 @@
 
 ### 便携版
 
-1. 下载 `RenpyThiefPatch-v1.0.3.0-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
+1. 下载 `RenpyThiefPatch-v1.0.3-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
 2. 将 ZIP **完整解压**到当前用户可写的独立目录，例如 `D:\Tools\RenpyThiefPatch`。
 3. 先阅读包内 `QUICK_START.txt`，再运行 `RenpyThiefPatch.exe`；也可以双击 `LaunchPatch.cmd`。
 
@@ -56,8 +57,8 @@
 校验 SHA-256：
 
 ```powershell
-(Get-FileHash .\RenpyThiefPatch-v1.0.3.0-setup-x64.exe -Algorithm SHA256).Hash
-(Get-FileHash .\RenpyThiefPatch-v1.0.3.0-portable-x64.zip -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.0.3-setup-x64.exe -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.0.3-portable-x64.zip -Algorithm SHA256).Hash
 ```
 
 将输出与同一 Release 中 `SHA256SUMS.txt` 对应文件名的值比较；不一致时不要运行或安装。
@@ -82,7 +83,7 @@
 5. 建议先点击“测试 API”。测试只会向所选平台发送固定文本 `こんにちは`，不会发送游戏内容。测试通过只代表凭据和当前端点可用，不代表原版登录或游戏注入已经完成。
 6. 点击“启动原版翻译器”或“使用我的 API 启动”。官方额度模式如出现原版登录页，请按原版要求完成登录。
 7. **必须等待补丁状态明确显示“已就绪，可以拖入游戏”。** 自定义 API 模式还需要 Bridge、注入组件和动态路由全部确认，因此可能比原版窗口出现稍晚。
-8. 此时再把游戏拖入 RenpyThief，后续游戏识别、启动和注入仍由原版流程执行。
+8. 此时再把游戏拖入 RenpyThief，后续游戏识别、启动和注入仍由原版流程执行。Ren'Py 游戏若弹出「请选择翻译样式」，请选 **「使用内嵌样式」**。
 
 切换线路前，请先关闭游戏并正常关闭 RenpyThief，再从补丁中重新启动。当前版本不支持运行中热切换。
 
@@ -308,28 +309,28 @@ python -m unittest discover -s tests -v
 先准备好 `router\` 中的四个原生运行文件。由于 PyInstaller 的 Qt 收集逻辑在部分版本中不能正确处理含中文的虚拟环境路径，**发布构建用的 venv 必须放在纯英文路径**：
 
 ```powershell
-$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.3.0'
+$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.3'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 1.0.3.0 -Python "$buildVenv\Scripts\python.exe"
+.\build_release.ps1 -Version 1.0.3 -Python "$buildVenv\Scripts\python.exe"
 ```
 
 不加 `-PublicRelease` 时，脚本只生成便携目录、便携 ZIP 和仅含便携 ZIP 的校验文件：
 
 ```text
-release\RenpyThiefPatch-v1.0.3.0-portable-x64\
-release\RenpyThiefPatch-v1.0.3.0-portable-x64.zip
+release\RenpyThiefPatch-v1.0.3-portable-x64\
+release\RenpyThiefPatch-v1.0.3-portable-x64.zip
 release\SHA256SUMS.txt
 ```
 
 正式公开发布时应使用 `-PublicRelease`；它会继续调用 Inno Setup 6.7.3 生成安装器，并让 `SHA256SUMS.txt` 同时覆盖安装器和便携 ZIP。如果缺少许可证文件、安装器定义或编译器，脚本会拒绝生成公开发布资产：
 
 ```powershell
-.\build_release.ps1 -Version 1.0.3.0 -Python "$buildVenv\Scripts\python.exe" `
+.\build_release.ps1 -Version 1.0.3 -Python "$buildVenv\Scripts\python.exe" `
   -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
 ```
 
-正式构建最终应再包含 `release\RenpyThiefPatch-v1.0.3.0-setup-x64.exe`。
+正式构建最终应再包含 `release\RenpyThiefPatch-v1.0.3-setup-x64.exe`。
 
 建议在干净虚拟环境中构建，并记录最终依赖版本。`build\`、`dist\`、`release\` 和原生二进制不应提交进 Git 历史。
 

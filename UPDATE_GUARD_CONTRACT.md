@@ -51,9 +51,10 @@ mode=lock
 local_version=auto
 session_compat=lock
 config_compat=deny
+translate_compat=lock
 ```
 
-官方免费额度模式继续使用仓库内默认 ini：`session_compat=observe`、`config_compat=pass`，因此只保护版本检查，不改写登录。
+官方免费额度模式继续使用仓库内默认 ini：`session_compat=observe`、`config_compat=pass`、`translate_compat=pass`，因此只保护版本检查，不改写登录或官方翻译。
 
 `session_compat=lock` 时，下列官方接口在 Qt `QNetworkAccessManager` 层被替换为本地 `data:` JSON，不把请求发到 `api.renpy.fun`：
 
@@ -69,6 +70,8 @@ config_compat=deny
 
 `config_compat=deny` 时，已知游戏配置/补齐接口（如 `getGameConfig`、`getUnityHook`、`getV8`）在同一钩子内失败关闭，避免官方配置下载。未知官方路径保持透传，不做猜测。
 
-`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 始终透传。自定义翻译仍由 `ipcroute` 在动态回环端口劫持，转发到本机 Bridge。不要同时再注入另一套 Qt NAM 钩子。
+`translate_compat=lock` 时，`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 不再发到 `api.renpy.fun`。同一套 Qt `QNetworkAccessManager` 钩子把请求改写到本机 Bridge 的 `http://127.0.0.1:19899/official-translate/<endpoint>`。若请求体带 `encrypted=true`（官方密文包），Bridge 直接 fail-closed，不会把密文送给用户 API，也不会把模型对密文的胡乱输出写回游戏。只有能解析出明文台词时，才回 `{status,msg,data.text}`。`translate_compat=pass`（官方额度默认）仍透传这三条接口。
+
+`ipcroute` 劫持已发现的动态回环三连端口（最低端口及其 +1/+2），并同时钩住 `WSAAccept` 与 `accept`。组外端口仍透传。游戏侧明文请求按方法/路径/query/form/JSON 抽出 `text`/`from`/`to`（及常见别名），再转到同一 Bridge。内嵌样式的 `POST /path?type=pt`（`msg`/`nonce`/`sign`）是密文，不送给用户 API；路由回同一段 JSON，避免 Hook 报网络中断。Ren'Py 明文台词由 `00unofficial_bridge.rpy` 转到 Bridge；启动脚本在拖入带 `game\*.rpy` 的游戏后自动写入该文件。测试阶段路由日志会记下方法、路径和能解出的台词正文。不要再注入另一套 Qt NAM 钩子。
 
 版本检查的 `hook_ready` / `blocked_check` 契约不变：guardlaunch 仍只等待 `getVersionInfo` 被拦截。会话短路发生在主线程恢复之后，不作为启动器握手条件。

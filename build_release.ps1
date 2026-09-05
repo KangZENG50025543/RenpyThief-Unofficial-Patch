@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.3.0',
+    [string]$Version = '1.0.3',
     [string]$Python = '',
     [string]$IsccPath = '',
     [switch]$PublicRelease
@@ -62,7 +62,8 @@ foreach ($required in @(
     (Join-Path $sourceRouter 'netinject.exe'),
     (Join-Path $sourceRouter 'guardlaunch.exe'),
     (Join-Path $sourceRouter 'versionguard.dll'),
-    (Join-Path $sourceRouter 'versionguard.ini')
+    (Join-Path $sourceRouter 'versionguard.ini'),
+    (Join-Path $sourceRouter '00unofficial_bridge.rpy')
 )) {
     if (!(Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Required build input not found: $required"
@@ -145,7 +146,8 @@ Copy-Item -Path (Join-Path $workRoot 'bridge-dist\translate_bridge\*') `
     -Destination $releaseRouter -Recurse -Force
 foreach ($name in @(
     'start_routed_translator.ps1', 'ipcroute.dll', 'netinject.exe',
-    'guardlaunch.exe', 'versionguard.dll', 'versionguard.ini'
+    'guardlaunch.exe', 'versionguard.dll', 'versionguard.ini',
+    '00unofficial_bridge.rpy'
 )) {
     Copy-Item -LiteralPath (Join-Path $sourceRouter $name) -Destination $releaseRouter
 }

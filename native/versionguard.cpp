@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "MinHook.h"
+#include "translate_compat.h"
 #include "version_endpoint.h"
 
 namespace {
@@ -58,6 +59,7 @@ bool g_logLockReady = false;
 GuardMode g_mode = GuardMode::Observe;
 SessionCompat g_sessionCompat = SessionCompat::Observe;
 ConfigCompat g_configCompat = ConfigCompat::Pass;
+TranslateCompat g_translateCompat = TranslateCompat::Pass;
 NetworkGetFn g_networkGet = nullptr;
 CreateRequestFn g_createRequest = nullptr;
 FromJsonFn g_fromJson = nullptr;
@@ -281,6 +283,11 @@ void LoadConfiguration()
                              static_cast<DWORD>(_countof(value)), path.c_str());
     g_configCompat = TrimLower(value) == L"deny" ? ConfigCompat::Deny
                                                  : ConfigCompat::Pass;
+    GetPrivateProfileStringW(L"versionguard", L"translate_compat", L"pass",
+                             value, static_cast<DWORD>(_countof(value)),
+                             path.c_str());
+    g_translateCompat = TrimLower(value) == L"lock" ? TranslateCompat::Lock
+                                                    : TranslateCompat::Pass;
 
     const std::string localUser = ReadLocalUserName();
     if (IsSafeUserName(localUser)) g_localUserName = localUser;
@@ -291,6 +298,8 @@ void LoadConfiguration()
         (g_sessionCompat == SessionCompat::Lock ? "lock" : "observe") +
         " config_compat=" +
         (g_configCompat == ConfigCompat::Deny ? "deny" : "pass") +
+        " translate_compat=" +
+        (g_translateCompat == TranslateCompat::Lock ? "lock" : "pass") +
         " local_version=" +
         (g_localVersion.empty() ? "unavailable" : g_localVersion) +
         " username_present=" +
@@ -499,6 +508,30 @@ const char* KindName(OfficialApiKind kind)
     }
 }
 
+QNetworkReply* HandleTranslateRequest(
+    QNetworkAccessManager* self, const QNetworkRequest& request,
+    RequestEntry entry, QNetworkAccessManager::Operation operation,
+    QIODevice* outgoingData, const OfficialEndpointMatch& official)
+{
+    const std::string encodedOfficial = EncodedUrl(request);
+    const std::string local =
+        OfficialTranslateBridgeUrl(official.endpoint, encodedOfficial);
+    const QByteArray encoded(local.data(), static_cast<int>(local.size()));
+    QNetworkRequest replacement(request);
+    replacement.setUrl(QUrl::fromEncoded(encoded, QUrl::StrictMode));
+    QNetworkReply* reply = entry == RequestEntry::Get
+        ? g_networkGet(self, replacement)
+        : g_createRequest(self, operation, replacement, outgoingData);
+    if (!reply) {
+        Log("hijack_bridge failed reason=null_reply endpoint=" +
+            official.endpoint + " action=fail_closed");
+        return FailLocally(self, entry, operation, request);
+    }
+    auto* access = static_cast<NetworkReplyAccess*>(reply);
+    access->setUrl(request.url());
+    return reply;
+}
+
 QNetworkReply* DispatchOfficialRequest(
     QNetworkAccessManager* self, const QNetworkRequest& request,
     RequestEntry entry, QNetworkAccessManager::Operation operation,
@@ -528,8 +561,12 @@ QNetworkReply* DispatchOfficialRequest(
                             g_configCompat == ConfigCompat::Deny &&
                             kind == OfficialApiKind::Config &&
                             IsSupportedVersionOperation(operation);
+    const bool translateLock = ShouldHijackOfficialTranslate(
+        g_mode == GuardMode::Lock, g_translateCompat, kind);
     const char* action = sessionLock ? "short_circuit"
-                                     : (configDeny ? "deny" : "pass");
+                                     : (configDeny ? "deny"
+                                        : (translateLock ? "hijack_bridge"
+                                                         : "pass"));
     Log("request matched endpoint=" + official.endpoint +
         " kind=" + std::string(KindName(kind)) +
         " entry=" + std::string(EntryName(entry)) +
@@ -546,6 +583,15 @@ QNetworkReply* DispatchOfficialRequest(
     }
     if (configDeny) {
         return FailLocally(self, entry, operation, request);
+    }
+    if (translateLock) {
+        if (!IsSupportedVersionOperation(operation)) {
+            Log("hijack_bridge failed reason=unsupported_operation endpoint=" +
+                official.endpoint + " action=fail_closed");
+            return FailLocally(self, entry, operation, request);
+        }
+        return HandleTranslateRequest(self, request, entry, operation,
+                                      outgoingData, official);
     }
     return entry == RequestEntry::Get
         ? g_networkGet(self, request)

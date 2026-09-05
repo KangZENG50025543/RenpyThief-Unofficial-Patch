@@ -678,7 +678,8 @@ class PatchLauncher:
                 ready = True
                 self._emit(
                     LaunchEventKind.READY,
-                    "自定义 API 路由已激活，可以拖入游戏。",
+                    "自定义 API 路由已激活，可以拖入游戏。"
+                    "如弹出「请选择翻译样式」，请选择「使用内嵌样式」。",
                     self.translator_pid,
                 )
             elif "WARNING:" in line or "failed" in line.casefold() or "error" in line.casefold():

@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include "translate_compat.h"
 #include "version_endpoint.h"
 
 struct Case
@@ -77,6 +78,33 @@ int wmain()
         MatchOfficialEndpoint(
             "https://api.renpy.fun/renpythief/getVersionInfo/", official)) {
         std::fprintf(stderr, "FAIL official endpoint matching stayed narrow\n");
+        return 1;
+    }
+    if (!ShouldHijackOfficialTranslate(true, TranslateCompat::Lock,
+                                       OfficialApiKind::Translate) ||
+        ShouldHijackOfficialTranslate(false, TranslateCompat::Lock,
+                                      OfficialApiKind::Translate) ||
+        ShouldHijackOfficialTranslate(true, TranslateCompat::Pass,
+                                      OfficialApiKind::Translate) ||
+        ShouldHijackOfficialTranslate(true, TranslateCompat::Lock,
+                                      OfficialApiKind::Session)) {
+        std::fprintf(stderr, "FAIL translate hijack policy\n");
+        return 1;
+    }
+    const std::string rewritten = OfficialTranslateBridgeUrl(
+        "sendTranslate",
+        "https://api.renpy.fun/renpythief/sendTranslate?x=1#frag");
+    if (rewritten !=
+        "http://127.0.0.1:19899/official-translate/sendTranslate?x=1") {
+        std::fprintf(stderr, "FAIL official translate rewrite url=%s\n",
+                     rewritten.c_str());
+        return 1;
+    }
+    if (OfficialTranslateBridgeUrl(
+            "sendMenuTranslate",
+            "https://api.renpy.fun/renpythief/sendMenuTranslate") !=
+        "http://127.0.0.1:19899/official-translate/sendMenuTranslate") {
+        std::fprintf(stderr, "FAIL official menu translate rewrite\n");
         return 1;
     }
     std::printf("PASS: normalized version endpoint matching is narrow.\n");

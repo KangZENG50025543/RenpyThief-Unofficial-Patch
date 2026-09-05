@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "ipcroute_request.h"
+
 namespace {
 
 constexpr unsigned short kTestDynamicBase = 24377;
@@ -139,6 +141,26 @@ bool AcceptMustBeHidden(SOCKET listener, WSAEVENT event)
     return hidden == INVALID_SOCKET && error == WSAEWOULDBLOCK;
 }
 
+bool AcceptCrtMustBeHidden(SOCKET listener, WSAEVENT event)
+{
+    const DWORD waited = WSAWaitForMultipleEvents(1, &event, FALSE, 5000, FALSE);
+    if (waited != WSA_WAIT_EVENT_0) return false;
+    WSANETWORKEVENTS events{};
+    if (WSAEnumNetworkEvents(listener, event, &events) == SOCKET_ERROR ||
+        !(events.lNetworkEvents & FD_ACCEPT)) {
+        return false;
+    }
+
+    sockaddr_storage peer{};
+    int peerLength = sizeof(peer);
+    WSASetLastError(0);
+    const SOCKET hidden = accept(
+        listener, reinterpret_cast<sockaddr*>(&peer), &peerLength);
+    const int error = WSAGetLastError();
+    if (hidden != INVALID_SOCKET) closesocket(hidden);
+    return hidden == INVALID_SOCKET && error == WSAEWOULDBLOCK;
+}
+
 bool AcceptMustPassThrough(SOCKET listener, WSAEVENT event)
 {
     const DWORD waited = WSAWaitForMultipleEvents(1, &event, FALSE, 5000, FALSE);
@@ -164,13 +186,89 @@ std::string HttpResponse(int status, const char* reason,
            "X-IpcRoute-Test: yes\r\n\r\n" + body;
 }
 
+bool ExpectExtractedText(const char* name, const std::string& request,
+                         const char* method, const char* path,
+                         const char* text)
+{
+    TranslationRequestShape shape;
+    std::string query;
+    if (!ExtractBridgeQuery(request, query, shape)) {
+        std::fprintf(stderr, "FAIL: %s parse\n", name);
+        return false;
+    }
+    if (shape.method != method || shape.path != path) {
+        std::fprintf(stderr, "FAIL: %s shape method=%s path=%s\n", name,
+                     shape.method.c_str(), shape.path.c_str());
+        return false;
+    }
+    std::string encoded;
+    std::string decoded;
+    if (!QueryRawValue(query, "text", encoded) ||
+        !DecodePercent(encoded, decoded) || decoded != text) {
+        std::fprintf(stderr, "FAIL: %s text=%s\n", name, decoded.c_str());
+        return false;
+    }
+    return true;
+}
+
+bool RunShapeTests()
+{
+    if (!ExpectExtractedText(
+            "get-root",
+            "GET /?from=auto&to=zh&text=Hello%20world HTTP/1.1\r\n"
+            "Host: 127.0.0.2\r\n\r\n",
+            "GET", "/", "Hello world")) {
+        return false;
+    }
+    if (!ExpectExtractedText(
+            "get-translate",
+            "GET /translate?from=en&to=zh&text=Path%20variant HTTP/1.1\r\n\r\n",
+            "GET", "/translate", "Path variant")) {
+        return false;
+    }
+    if (!ExpectExtractedText(
+            "post-form",
+            "POST /translate HTTP/1.1\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\n"
+            "Content-Length: 32\r\n\r\n"
+            "from=auto&to=zh&text=Form%20line",
+            "POST", "/translate", "Form line")) {
+        return false;
+    }
+    if (!ExpectExtractedText(
+            "post-json",
+            "POST /api HTTP/1.1\r\n"
+            "Content-Type: application/json\r\n\r\n"
+            "{\"text\":\"Json line\",\"from\":\"ja\",\"to\":\"zh\"}",
+            "POST", "/api", "Json line")) {
+        return false;
+    }
+    TranslationRequestShape shape;
+    std::string query;
+    if (ExtractBridgeQuery("OPTIONS / HTTP/1.1\r\n\r\n", query, shape)) {
+        std::fprintf(stderr, "FAIL: options should not parse as translation\n");
+        return false;
+    }
+    if (ExtractBridgeQuery(
+            "POST /path?type=pt HTTP/1.1\r\n"
+            "Content-Type: application/json\r\n\r\n"
+            "{\"msg\":\"abc=\",\"nonce\":1,\"sign\":\"deadbeef\"}",
+            query, shape) ||
+        !IsEmbedCipherRequest(shape)) {
+        std::fprintf(stderr, "FAIL: embed cipher should not become bridge text\n");
+        return false;
+    }
+    return true;
+}
+
 bool RunBridgeCase(SOCKET routeListener, WSAEVENT routeEvent,
                    unsigned short routePort, SOCKET bridgeListener,
                    const char* caseName,
                    const std::string& bridgeResponse,
                    const std::string& expectedGameResponse,
                    DWORD bridgeCloseDelayMs = 0,
-                   DWORD maximumGameResponseMs = INFINITE)
+                   DWORD maximumGameResponseMs = INFINITE,
+                   const char* targetPrefix = "/?")
 {
     BridgeContext bridge{};
     bridge.listener = bridgeListener;
@@ -190,7 +288,7 @@ bool RunBridgeCase(SOCKET routeListener, WSAEVENT routeEvent,
 
     const std::string query = std::string("from=auto&to=zh&text=") + caseName;
     const std::string request =
-        "GET /?" + query + " HTTP/1.1\r\n"
+        std::string("GET ") + targetPrefix + query + " HTTP/1.1\r\n"
         "Host: 127.0.0.2:" + std::to_string(routePort) + "\r\n"
         "Connection: Keep-Alive\r\n\r\n";
 
@@ -226,6 +324,93 @@ bool RunBridgeCase(SOCKET routeListener, WSAEVENT routeEvent,
                         gameElapsed < maximumGameResponseMs;
     return joined == WAIT_OBJECT_0 && bridge.success && gameReceived &&
            forwarded && gameResponse == expectedGameResponse && timing;
+}
+
+bool RunPostedBridgeCase(SOCKET routeListener, WSAEVENT routeEvent,
+                         unsigned short routePort, SOCKET bridgeListener,
+                         const char* caseName,
+                         const std::string& bridgeResponse,
+                         const std::string& expectedGameResponse)
+{
+    BridgeContext bridge{};
+    bridge.listener = bridgeListener;
+    bridge.response = bridgeResponse;
+    HANDLE bridgeThread = CreateThread(nullptr, 0, BridgeWorker, &bridge, 0,
+                                       nullptr);
+    if (!bridgeThread) return false;
+
+    SOCKET game = ConnectGame(routePort);
+    if (game == INVALID_SOCKET ||
+        !AcceptMustBeHidden(routeListener, routeEvent)) {
+        if (game != INVALID_SOCKET) closesocket(game);
+        CloseHandle(bridgeThread);
+        return false;
+    }
+
+    const std::string query = std::string("from=auto&to=zh&text=") + caseName;
+    const std::string request =
+        "POST /translate HTTP/1.1\r\n"
+        "Host: 127.0.0.2:" + std::to_string(routePort) + "\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: " + std::to_string(query.size()) + "\r\n"
+        "Connection: close\r\n\r\n" + query;
+
+    Sleep(150);
+    const size_t split = 17;
+    if (!SendAll(game, request.data(), split)) {
+        closesocket(game);
+        CloseHandle(bridgeThread);
+        return false;
+    }
+    Sleep(150);
+    if (!SendAll(game, request.data() + split, request.size() - split)) {
+        closesocket(game);
+        CloseHandle(bridgeThread);
+        return false;
+    }
+
+    std::string gameResponse;
+    const bool gameReceived = ReceiveToClose(game, gameResponse);
+    closesocket(game);
+    const DWORD joined = WaitForSingleObject(bridgeThread, 10000);
+    CloseHandle(bridgeThread);
+    const std::string expectedLine = "GET /translate?" + query +
+                                     " HTTP/1.1\r\n";
+    const bool forwarded = bridge.request.compare(
+        0, expectedLine.size(), expectedLine) == 0;
+    return joined == WAIT_OBJECT_0 && bridge.success && gameReceived &&
+           forwarded && gameResponse == expectedGameResponse;
+}
+
+bool RunEmbedIdentityCase(SOCKET routeListener, WSAEVENT routeEvent,
+                          unsigned short routePort)
+{
+    SOCKET game = ConnectGame(routePort);
+    if (game == INVALID_SOCKET ||
+        !AcceptMustBeHidden(routeListener, routeEvent)) {
+        if (game != INVALID_SOCKET) closesocket(game);
+        return false;
+    }
+
+    const std::string body =
+        "{\"msg\":\"abc=\",\"nonce\":1,\"sign\":\"deadbeef\"}";
+    const std::string request =
+        "POST /path?type=pt HTTP/1.1\r\n"
+        "Host: 127.0.0.2:" + std::to_string(routePort) + "\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
+
+    Sleep(150);
+    if (!SendAll(game, request.data(), request.size())) {
+        closesocket(game);
+        return false;
+    }
+    std::string gameResponse;
+    const bool gameReceived = ReceiveToClose(game, gameResponse);
+    closesocket(game);
+    return gameReceived &&
+           gameResponse.find("HTTP/1.1 200 OK\r\n") == 0 &&
+           gameResponse.find(body) != std::string::npos;
 }
 
 bool RunConcurrencyCase(SOCKET routeListener, WSAEVENT routeEvent,
@@ -323,7 +508,9 @@ bool WaitForStageLog(const std::wstring& path)
             log.find("failure_stage=bridge_fetch elapsed_ms=") !=
                 std::string::npos &&
             log.find("failure_stage=client_request_read elapsed_ms=") !=
-                std::string::npos) {
+                std::string::npos &&
+            log.find("route inspect ") != std::string::npos &&
+            log.find(" text=split") != std::string::npos) {
             return true;
         }
         Sleep(20);
@@ -348,6 +535,11 @@ void Fail(const char* message)
 
 int wmain(int argc, wchar_t** argv)
 {
+    if (!RunShapeTests()) {
+        Fail("flexible translation request shapes");
+        return 1;
+    }
+
     WSADATA data{};
     if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
         Fail("WSAStartup");
@@ -430,7 +622,8 @@ int wmain(int argc, wchar_t** argv)
         return 1;
     }
 
-    // A connection on base+1 must remain visible to the original application.
+    // A connection on base+1 must also be stolen; only ports outside the
+    // discovered triple remain visible to the original application.
     WSAEVENT secondaryEvent = WSACreateEvent();
     if (secondaryEvent == WSA_INVALID_EVENT ||
         WSAEventSelect(routeListeners[1], secondaryEvent, FD_ACCEPT) ==
@@ -440,13 +633,55 @@ int wmain(int argc, wchar_t** argv)
     }
     SOCKET secondaryClient = ConnectGame(kTestDynamicBase + 1);
     if (secondaryClient == INVALID_SOCKET ||
-        !AcceptMustPassThrough(routeListeners[1], secondaryEvent)) {
-        Fail("non-base listener was incorrectly intercepted");
+        !AcceptMustBeHidden(routeListeners[1], secondaryEvent)) {
+        Fail("group listener +1 was not intercepted");
         return 1;
     }
     closesocket(secondaryClient);
     WSAEventSelect(routeListeners[1], WSA_INVALID_EVENT, 0);
     WSACloseEvent(secondaryEvent);
+
+    WSAEVENT thirdEvent = WSACreateEvent();
+    if (thirdEvent == WSA_INVALID_EVENT ||
+        WSAEventSelect(routeListeners[2], thirdEvent, FD_ACCEPT) ==
+            SOCKET_ERROR) {
+        Fail("configure third accept event");
+        return 1;
+    }
+    SOCKET thirdClient = ConnectGame(kTestDynamicBase + 2);
+    if (thirdClient == INVALID_SOCKET ||
+        !AcceptCrtMustBeHidden(routeListeners[2], thirdEvent)) {
+        Fail("group listener +2 accept() was not intercepted");
+        return 1;
+    }
+    closesocket(thirdClient);
+    WSAEventSelect(routeListeners[2], WSA_INVALID_EVENT, 0);
+    WSACloseEvent(thirdEvent);
+
+    SOCKET outsideListener = INVALID_SOCKET;
+    if (!BindListener("127.0.0.2",
+                      static_cast<unsigned short>(kTestDynamicBase + 5),
+                      outsideListener)) {
+        Fail("bind outside-group listener");
+        return 1;
+    }
+    WSAEVENT outsideEvent = WSACreateEvent();
+    if (outsideEvent == WSA_INVALID_EVENT ||
+        WSAEventSelect(outsideListener, outsideEvent, FD_ACCEPT) ==
+            SOCKET_ERROR) {
+        Fail("configure outside-group accept event");
+        return 1;
+    }
+    SOCKET outsideClient = ConnectGame(kTestDynamicBase + 5);
+    if (outsideClient == INVALID_SOCKET ||
+        !AcceptMustPassThrough(outsideListener, outsideEvent)) {
+        Fail("outside-group listener was incorrectly intercepted");
+        return 1;
+    }
+    closesocket(outsideClient);
+    WSAEventSelect(outsideListener, WSA_INVALID_EVENT, 0);
+    WSACloseEvent(outsideEvent);
+    closesocket(outsideListener);
 
     const std::string successBody = "BRIDGE_OK\n";
     const std::string successResponse =
@@ -455,6 +690,27 @@ int wmain(int argc, wchar_t** argv)
                        bridgeListener, "split",
                        successResponse, successResponse, 2000, 1500)) {
         Fail("delayed split request or Content-Length completion");
+        return 1;
+    }
+
+    if (!RunBridgeCase(routeListeners[0], routeEvent, kTestDynamicBase,
+                       bridgeListener, "pathvariant",
+                       successResponse, successResponse, 0, INFINITE,
+                       "/translate?")) {
+        Fail("GET /translate query path");
+        return 1;
+    }
+
+    if (!RunPostedBridgeCase(routeListeners[0], routeEvent, kTestDynamicBase,
+                             bridgeListener, "formline",
+                             successResponse, successResponse)) {
+        Fail("POST form translation body");
+        return 1;
+    }
+
+    if (!RunEmbedIdentityCase(routeListeners[0], routeEvent,
+                              kTestDynamicBase)) {
+        Fail("embed cipher identity echo");
         return 1;
     }
 
@@ -504,9 +760,9 @@ int wmain(int argc, wchar_t** argv)
     }
     WSACleanup();
 
-    std::printf("PASS: dynamic consecutive-listener base, non-base pass-through, "
-                "split nonblocking request, HTTP validation, and worker cap "
-                "verified.\n");
+    std::printf("PASS: request shapes, dynamic consecutive-listener group, "
+                "outside pass-through, split nonblocking request, HTTP "
+                "validation, and worker cap verified.\n");
     std::wprintf(L"SELFTEST_DIR=%ls\n", runtimeDir.c_str());
     return 0;
 }

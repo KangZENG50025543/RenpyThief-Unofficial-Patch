@@ -925,5 +925,127 @@ class TranslationCacheTests(unittest.TestCase):
         self.assertEqual(translator._translation_inflight, {})
 
 
+class OfficialTranslateBridgeTests(unittest.TestCase):
+    def test_extract_json_form_and_nested_fields(self) -> None:
+        parsed = BRIDGE.extract_official_translate_request(
+            json.dumps(
+                {"text": "hello", "from": "ja", "to": "zh", "type": 2}
+            ).encode("utf-8"),
+            "application/json",
+            {},
+        )
+        self.assertEqual(parsed.text, "hello")
+        self.assertEqual(parsed.source, "ja")
+        self.assertEqual(parsed.target, "zh-hans")
+        self.assertEqual(parsed.type_value, 2)
+        self.assertIn("text", parsed.keys)
+
+        form = BRIDGE.extract_official_translate_request(
+            b"text=menu&from=en&to=zh&type=1",
+            "application/x-www-form-urlencoded",
+            {},
+        )
+        self.assertEqual(form.text, "menu")
+        self.assertEqual(form.source, "en")
+        self.assertEqual(form.target, "zh-hans")
+        self.assertEqual(form.type_value, 1)
+
+        nested = BRIDGE.extract_official_translate_request(
+            json.dumps({"data": {"srcText": "nested", "srcLang": "日语"}}).encode(
+                "utf-8"
+            ),
+            "application/json",
+            {},
+        )
+        self.assertEqual(nested.text, "nested")
+        self.assertEqual(nested.source, "ja")
+        self.assertEqual(nested.target, "zh")
+
+        guessed = BRIDGE.extract_official_translate_request(
+            json.dumps({"sentence": "only-one", "token": "secret"}).encode("utf-8"),
+            "application/json",
+            {},
+        )
+        self.assertEqual(guessed.text, "only-one")
+        self.assertNotIn("secret", guessed.keys)
+
+        encrypted = BRIDGE.extract_official_translate_request(
+            json.dumps(
+                {"data": "A" * 64, "encrypted": True}
+            ).encode("utf-8"),
+            "application/json",
+            {},
+        )
+        self.assertEqual(encrypted.text, "")
+        self.assertTrue(encrypted.encrypted)
+        self.assertEqual(encrypted.data_chars, 64)
+        self.assertEqual(BRIDGE.classify_blob("A" * 64), "hex-like")
+        self.assertEqual(BRIDGE.classify_blob("Ab+/" * 16), "base64-like")
+
+    def test_official_http_post_returns_envelope(self) -> None:
+        translator = make_translator()
+        translator.mode = "echo"
+        server = BRIDGE.BoundedThreadingHTTPServer(
+            ("127.0.0.1", 0),
+            BRIDGE.make_handler(translator, False),
+            4,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            host, port = server.server_address[:2]
+            conn = http.client.HTTPConnection(host, port, timeout=2)
+            payload = json.dumps({"text": "hello", "from": "ja", "to": "zh"})
+            conn.request(
+                "POST",
+                "/official-translate/sendTranslate",
+                body=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            body = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(response.status, 200)
+            self.assertEqual(body["status"], 200)
+            self.assertEqual(body["msg"], "OK")
+            self.assertEqual(body["data"]["text"], "hello")
+            self.assertFalse(body["data"]["isChatGPT"])
+            self.assertIn("remainCharCount", body["data"])
+
+            conn.request("POST", "/official-translate/sendTranslate", body=b"{}")
+            missing = conn.getresponse()
+            missing_body = json.loads(missing.read().decode("utf-8"))
+            self.assertEqual(missing.status, 400)
+            self.assertEqual(missing_body["status"], 400)
+            self.assertNotIn("text", missing_body["data"])
+
+            encrypted_payload = json.dumps(
+                {"data": "A" * 64, "encrypted": True}
+            )
+            conn.request(
+                "POST",
+                "/official-translate/sendTranslate",
+                body=encrypted_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            encrypted = conn.getresponse()
+            encrypted_body = json.loads(encrypted.read().decode("utf-8"))
+            self.assertEqual(encrypted.status, 400)
+            self.assertNotIn("text", encrypted_body["data"])
+
+            conn.request(
+                "GET",
+                "/official-translate/sendMenuTranslate?text=menu&from=en&to=zh",
+            )
+            query_response = conn.getresponse()
+            query_body = json.loads(query_response.read().decode("utf-8"))
+            self.assertEqual(query_response.status, 200)
+            self.assertEqual(query_body["data"]["text"], "menu")
+            conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.3.0',
+    [string]$Version = '1.0.3',
 
     [string]$Python = 'python.exe',
 
@@ -214,6 +214,7 @@ try {
         'router\guardlaunch.exe',
         'router\versionguard.dll',
         'router\versionguard.ini',
+        'router\00unofficial_bridge.rpy',
         'README.md',
         'LICENSE',
         'COPYRIGHT',

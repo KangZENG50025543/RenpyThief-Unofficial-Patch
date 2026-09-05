@@ -228,6 +228,45 @@ function Remove-SensitiveChildEnvironment {
     }
 }
 
+function ConvertFrom-QtIniValue {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $Value }
+    return [regex]::Replace($Value, '\\x([0-9A-Fa-f]{4})', {
+        param($match)
+        [string][char][int]('0x' + $match.Groups[1].Value)
+    })
+}
+
+function Read-LastInjectPath {
+    param([string]$SettingsPath)
+    if (-not (Test-Path -LiteralPath $SettingsPath -PathType Leaf)) { return '' }
+    foreach ($line in Get-Content -LiteralPath $SettingsPath -Encoding UTF8) {
+        if ($line -match '^lastInjectPath=(.*)$') {
+            return ConvertFrom-QtIniValue -Value $Matches[1].Trim()
+        }
+    }
+    return ''
+}
+
+function Test-RenpyGameRoot {
+    param([string]$GameRoot)
+    if ([string]::IsNullOrWhiteSpace($GameRoot)) { return $false }
+    if (-not (Test-Path -LiteralPath $GameRoot -PathType Container)) { return $false }
+    $gameDir = Join-Path $GameRoot 'game'
+    if (-not (Test-Path -LiteralPath $gameDir -PathType Container)) { return $false }
+    return @(Get-ChildItem -LiteralPath $gameDir -Filter '*.rpy' -File -ErrorAction SilentlyContinue).Count -gt 0
+}
+
+function Install-UnofficialRenpyBridge {
+    param([string]$GameRoot)
+    $source = Join-Path $routerDir '00unofficial_bridge.rpy'
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { return $false }
+    if (-not (Test-RenpyGameRoot -GameRoot $GameRoot)) { return $false }
+    $dest = Join-Path $GameRoot 'game\00unofficial_bridge.rpy'
+    Copy-Item -LiteralPath $source -Destination $dest -Force
+    return $true
+}
+
 function Clear-BridgeOnlyEnvironment {
     # Start-Process has already copied these values into the bridge. Remove the
     # supervisor's copies before it launches RenpyThief or helper processes.
@@ -475,6 +514,9 @@ try {
         '--log-path', ('"{0}"' -f (Join-Path $routerDir 'bridge_requests.log')),
         '--no-log-content'
     )
+    if (Test-Path -LiteralPath (Join-Path $routerDir 'enable_content_tap.txt') -PathType Leaf) {
+        $bridgeArgs += @('--tap-content')
+    }
     if ($Mode -eq 'openai') {
         $bridgeArgs += @('--base-url', $BaseUrl, '--model', $Model)
         if ($null -ne $resolvedApiKeyFile) {
@@ -519,7 +561,7 @@ try {
         Copy-Item -LiteralPath $versionGuardSource -Destination $runtimeGuardDll -ErrorAction Stop
         [IO.File]::WriteAllText(
             $runtimeGuardIni,
-            "[versionguard]`r`nmode=lock`r`nlocal_version=auto`r`nsession_compat=lock`r`nconfig_compat=deny`r`n",
+            "[versionguard]`r`nmode=lock`r`nlocal_version=auto`r`nsession_compat=lock`r`nconfig_compat=deny`r`ntranslate_compat=lock`r`n",
             (New-Object Text.UTF8Encoding($false))
         )
         if ((Get-FileHash -LiteralPath $versionGuardSource -Algorithm SHA256).Hash -ne
@@ -640,9 +682,18 @@ try {
     Write-Host "Runtime: $runtimeDir"
     Write-Host 'No game configuration was read or changed. Keep this launcher running while translating.'
 
+    $settingsPath = Join-Path ([IO.Path]::GetDirectoryName($resolvedTranslator)) 'settings.ini'
+    $lastBridgeGame = ''
     while (Get-Process -Id $translatorProcess.Id -ErrorAction SilentlyContinue) {
         if ($bridgeProcess.HasExited) {
             throw "Translation bridge exited unexpectedly with code $($bridgeProcess.ExitCode). RenpyThief must be restarted before retrying."
+        }
+        $droppedGame = Read-LastInjectPath -SettingsPath $settingsPath
+        if ($droppedGame -and $droppedGame -ne $lastBridgeGame) {
+            if (Install-UnofficialRenpyBridge -GameRoot $droppedGame) {
+                Write-Host "Installed unofficial Ren'Py bridge script into the dropped game."
+            }
+            $lastBridgeGame = $droppedGame
         }
         Start-Sleep -Milliseconds 500
     }
