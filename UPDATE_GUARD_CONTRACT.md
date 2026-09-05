@@ -72,6 +72,6 @@ translate_compat=lock
 
 `translate_compat=lock` 时，`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 不再发到 `api.renpy.fun`。同一套 Qt `QNetworkAccessManager` 钩子把请求改写到本机 Bridge 的 `http://127.0.0.1:19899/official-translate/<endpoint>`。若请求体带 `encrypted=true`（官方密文包），Bridge 直接 fail-closed，不会把密文送给用户 API，也不会把模型对密文的胡乱输出写回游戏。只有能解析出明文台词时，才回 `{status,msg,data.text}`。`translate_compat=pass`（官方额度默认）仍透传这三条接口。
 
-`ipcroute` 劫持已发现的动态回环三连端口（最低端口及其 +1/+2），并同时钩住 `WSAAccept` 与 `accept`。组外端口仍透传。游戏侧明文请求按方法/路径/query/form/JSON 抽出 `text`/`from`/`to`（及常见别名），再转到同一 Bridge。内嵌样式的 `POST /path?type=pt`（`msg`/`nonce`/`sign`）是密文，不送给用户 API；路由回同一段 JSON，避免 Hook 报网络中断。Ren'Py 明文台词由 `00unofficial_bridge.rpy` 转到 Bridge；启动脚本在拖入带 `game\*.rpy` 的游戏后自动写入该文件。测试阶段路由日志会记下方法、路径和能解出的台词正文。不要再注入另一套 Qt NAM 钩子。
+`ipcroute` 劫持已发现的动态回环三连端口（最低端口及其 +1/+2），并同时钩住 `WSAAccept` 与 `accept`。组外端口仍透传。游戏侧明文请求按方法/路径/query/form/JSON 抽出 `text`/`from`/`to`（及常见别名），再转到同一 Bridge。内嵌样式的 `POST /path?type=pt`（`msg`/`nonce`/`sign`）是密文，不送给用户 API；路由回同一段 JSON，避免 Hook 报网络中断。通用注入器 `RenpyInjector-x86.exe` 由启动器另注 `injectroute.dll`（不要把它打进 RenpyThief 主进程）：只钩注入器的 `QNetworkAccessManager::post`，本机 JSON 明文改到 Bridge，官方密文包原样放过。`v1.0.4.0` 测试默认 `$EnableRenpyScriptBridge = $false`：不写入 `00unofficial_bridge.rpy`，并删除游戏里上一版留下的该文件，用来观察原版会不会改走 `RenpyInjector`。正式版 v1.0.3 仍会在拖入带 `game\*.rpy` 的游戏后写入该脚本。测试阶段路由日志会记下方法、路径和能解出的台词正文。不要再往 RenpyThief 主进程注入另一套 Qt NAM 钩子。
 
 版本检查的 `hook_ready` / `blocked_check` 契约不变：guardlaunch 仍只等待 `getVersionInfo` 被拦截。会话短路发生在主线程恢复之后，不作为启动器握手条件。

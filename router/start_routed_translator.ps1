@@ -56,6 +56,7 @@ $bridgePort = 19899
 $routerDir = $scriptDir
 $bridgePath = Join-Path $routerDir 'translate_bridge.py'
 $routeDllSource = Join-Path $routerDir 'ipcroute.dll'
+$injectRouteDllSource = Join-Path $routerDir 'injectroute.dll'
 $injectorPath = Join-Path $routerDir 'netinject.exe'
 $guardLauncherPath = Join-Path $routerDir 'guardlaunch.exe'
 $versionGuardSource = Join-Path $routerDir 'versionguard.dll'
@@ -257,6 +258,9 @@ function Test-RenpyGameRoot {
     return @(Get-ChildItem -LiteralPath $gameDir -Filter '*.rpy' -File -ErrorAction SilentlyContinue).Count -gt 0
 }
 
+# 1.0.4.0 测试：关掉 Ren'Py 脚本层，看原版会不会改走通用注入器。
+$EnableRenpyScriptBridge = $false
+
 function Install-UnofficialRenpyBridge {
     param([string]$GameRoot)
     $source = Join-Path $routerDir '00unofficial_bridge.rpy'
@@ -265,6 +269,58 @@ function Install-UnofficialRenpyBridge {
     $dest = Join-Path $GameRoot 'game\00unofficial_bridge.rpy'
     Copy-Item -LiteralPath $source -Destination $dest -Force
     return $true
+}
+
+function Remove-UnofficialRenpyBridge {
+    param([string]$GameRoot)
+    if ([string]::IsNullOrWhiteSpace($GameRoot)) { return $false }
+    $dest = Join-Path $GameRoot 'game\00unofficial_bridge.rpy'
+    if (-not (Test-Path -LiteralPath $dest -PathType Leaf)) { return $false }
+    Remove-Item -LiteralPath $dest -Force
+    return $true
+}
+
+function Test-PathUnderRoot {
+    param([string]$Root, [string]$Candidate)
+    if ([string]::IsNullOrWhiteSpace($Root) -or [string]::IsNullOrWhiteSpace($Candidate)) {
+        return $false
+    }
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    $childFull = [IO.Path]::GetFullPath($Candidate)
+    return $childFull.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Sync-InjectorPlaintextRoute {
+    param(
+        [string]$OriginRoot,
+        [string]$RuntimeDll,
+        [string]$NetInject,
+        [hashtable]$Seen
+    )
+    if (!(Test-Path -LiteralPath $RuntimeDll -PathType Leaf)) { return }
+    foreach ($name in @('RenpyInjector-x86.exe', 'RenpyInjector-x64.exe')) {
+        foreach ($process in @(Get-Process -Name ($name.Substring(0, $name.Length - 4)) -ErrorAction SilentlyContinue)) {
+            $pidValue = [int]$process.Id
+            if ($Seen.ContainsKey($pidValue)) { continue }
+            $exePath = ''
+            try { $exePath = $process.Path } catch { $exePath = '' }
+            if (-not (Test-PathUnderRoot -Root $OriginRoot -Candidate $exePath)) { continue }
+            if ($name -eq 'RenpyInjector-x64.exe') {
+                Write-Host "Skipping 64-bit injector PID $pidValue; injectroute is x86-only in this build."
+                $Seen[$pidValue] = 'skipped-x64'
+                continue
+            }
+            $output = @(& $NetInject "$pidValue" $RuntimeDll 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                $text = ($output | ForEach-Object { $_.ToString() }) -join ' '
+                Write-Warning "injectroute attach failed for PID ${pidValue}: $text"
+                $Seen[$pidValue] = 'failed'
+                continue
+            }
+            Write-Host "Routed generic injector plaintext: $name PID $pidValue -> Bridge."
+            $Seen[$pidValue] = 'injected'
+        }
+    }
 }
 
 function Clear-BridgeOnlyEnvironment {
@@ -403,7 +459,7 @@ function Stop-UnroutedTranslator {
 }
 
 try {
-    $requiredFiles = @($routeDllSource, $injectorPath)
+    $requiredFiles = @($routeDllSource, $injectRouteDllSource, $injectorPath)
     if ($blockUpdatesEnabled) {
         $requiredFiles += @($guardLauncherPath, $versionGuardSource, $versionGuardConfig)
     }
@@ -594,8 +650,10 @@ try {
     Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
 
     $runtimeDll = Join-Path $runtimeDir 'ipcroute.dll'
+    $runtimeInjectRouteDll = Join-Path $runtimeDir 'injectroute.dll'
     $runtimeIni = Join-Path $runtimeDir 'ipcroute.ini'
     Copy-Item -LiteralPath $routeDllSource -Destination $runtimeDll -ErrorAction Stop
+    Copy-Item -LiteralPath $injectRouteDllSource -Destination $runtimeInjectRouteDll -ErrorAction Stop
     [IO.File]::WriteAllText(
         $runtimeIni,
         "[ipcroute]`r`nmode=hijack`r`n",
@@ -683,18 +741,29 @@ try {
     Write-Host 'No game configuration was read or changed. Keep this launcher running while translating.'
 
     $settingsPath = Join-Path ([IO.Path]::GetDirectoryName($resolvedTranslator)) 'settings.ini'
+    $originRoot = [IO.Path]::GetDirectoryName($resolvedTranslator)
     $lastBridgeGame = ''
+    $injectorRouteSeen = @{}
     while (Get-Process -Id $translatorProcess.Id -ErrorAction SilentlyContinue) {
         if ($bridgeProcess.HasExited) {
             throw "Translation bridge exited unexpectedly with code $($bridgeProcess.ExitCode). RenpyThief must be restarted before retrying."
         }
         $droppedGame = Read-LastInjectPath -SettingsPath $settingsPath
         if ($droppedGame -and $droppedGame -ne $lastBridgeGame) {
-            if (Install-UnofficialRenpyBridge -GameRoot $droppedGame) {
-                Write-Host "Installed unofficial Ren'Py bridge script into the dropped game."
+            if ($EnableRenpyScriptBridge) {
+                if (Install-UnofficialRenpyBridge -GameRoot $droppedGame) {
+                    Write-Host "Installed unofficial Ren'Py bridge script into the dropped game."
+                }
+            } elseif (Remove-UnofficialRenpyBridge -GameRoot $droppedGame) {
+                Write-Host "Ren'Py script bridge disabled for generic-injector test; removed leftover 00unofficial_bridge.rpy."
+            } else {
+                Write-Host "Ren'Py script bridge disabled for generic-injector test; not installing 00unofficial_bridge.rpy."
             }
             $lastBridgeGame = $droppedGame
         }
+        Sync-InjectorPlaintextRoute -OriginRoot $originRoot `
+            -RuntimeDll $runtimeInjectRouteDll -NetInject $injectorPath `
+            -Seen $injectorRouteSeen
         Start-Sleep -Milliseconds 500
     }
     Write-Host 'RenpyThief exited; stopping the bridge started by this launcher.'

@@ -56,9 +56,16 @@ cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE /DQT_NO_VERSION_TAGGING ^
 link /nologo /dll /out:"%OUTPUT%\versionguard.dll" /implib:versionguard.lib versionguard.obj buffer.obj hook.obj trampoline.obj hde32.obj ^
   qt5core_min.lib qt5network_min.lib version.lib || goto :fail
 
+cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE /DQT_NO_VERSION_TAGGING ^
+  /I"%MHSRC%\include" /I"%QTINCLUDE%" /I"%QTINCLUDE%\QtCore" /I"%QTINCLUDE%\QtNetwork" ^
+  /c "%~dp0injectroute.cpp" || goto :fail
+link /nologo /dll /out:"%OUTPUT%\injectroute.dll" /implib:injectroute.lib injectroute.obj buffer.obj hook.obj trampoline.obj hde32.obj ^
+  qt5core_min.lib qt5network_min.lib || goto :fail
+
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0ipcroute_test.cpp" /Fe:ipcroute_test.exe /link ws2_32.lib || goto :fail
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0version_endpoint_test.cpp" /Fe:version_endpoint_test.exe || goto :fail
 cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0guardlaunch_policy_test.cpp" /Fe:guardlaunch_policy_test.exe || goto :fail
+cl /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE "%~dp0injectroute_test.cpp" /Fe:injectroute_test.exe || goto :fail
 
 popd
 echo Built x86 runtime files in "%OUTPUT%".

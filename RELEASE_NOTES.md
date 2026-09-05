@@ -1,6 +1,6 @@
-# v1.0.3 — 内置干净 6.7.8，Ren'Py 内嵌走用户 API
+# v1.0.4.0 — 测试版：关掉 Ren'Py 脚本层，试通用注入器明文路由
 
-这是正式版。由测试版 `v1.0.3.0` 验证后发布。
+这是**测试版**，不是正式版。正式可用版本仍是 `v1.0.3`。本号用来验证：不写 `00unofficial_bridge.rpy` 时，原版会不会改走 `RenpyInjector`，从而让新的 `injectroute` 接到明文。
 
 ## 普通用户请下载这里
 
@@ -8,68 +8,31 @@
 
 | 文件 | 用途 |
 |---|---|
-| **`RenpyThiefPatch-v1.0.3-setup-x64.exe`** | 推荐；带安装向导、开始菜单、可选桌面快捷方式和卸载入口 |
-| **`RenpyThiefPatch-v1.0.3-portable-x64.zip`** | 免安装；完整解压后运行 `RenpyThiefPatch.exe` |
+| **`RenpyThiefPatch-v1.0.4.0-setup-x64.exe`** | 测试安装版 |
+| **`RenpyThiefPatch-v1.0.4.0-portable-x64.zip`** | 测试便携版；完整解压后运行 `RenpyThiefPatch.exe` |
 
-因安装包内含干净 RenpyThief 6.7.8，体积会明显大于 1.0.2。`SHA256SUMS.txt` 用于校验安装器和便携 ZIP。PyQt5、Qt、MinHook、Python 的锁定对应源码与 **v0.1.2 完全相同**，请到 [v0.1.2 Release](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 下载，或阅读本 Release 的 `THIRD_PARTY_SOURCE_REFERENCE.txt`。GitHub 自动显示的 **Source code (zip/tar.gz)** 是本补丁源码，**不是普通用户要安装的程序**。
+`SHA256SUMS.txt` 用于校验。第三方锁定源码仍与 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 相同。
 
-当前只实测 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。官方免费额度仍使用你自己的原版程序并按原版登录；「我的 API」使用补丁附带的干净 6.7.8 工作副本，翻译走用户自己的云服务或本机模型。本补丁不代替原版付费授权，也不会把翻译静默切到官方服务。
+当前只实测 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。
 
-## v1.0.3 更新内容
+## 这次测什么
 
-- 「我的 API」不再要求浏览你电脑上的原版：补丁会使用内置的干净 6.7.8（`6.7.8Origin`），启动前复制到 `%LOCALAPPDATA%\RenpyThiefUnofficialPatch\6.7.8Runtime`，不读写你已有的原版目录。界面路径栏会锁定为内置副本。
-- **Ren'Py 内嵌样式走用户 API**：拖入 Ren'Py 游戏并选择「使用内嵌样式」后，补丁会把 `00unofficial_bridge.rpy` 写入游戏的 `game\` 目录，在脚本明文层把台词转到本机 Bridge。这是 RenpyInjector / RenpyHook 那条路，不解密官方密文包。
-- 内嵌 Hook 发往本机三连端口的 `POST /path?type=pt` 密文包会被原样回给 Hook，避免报网络中断；密文不会送给你的 API。
-- 官方 `sendTranslate` 在「我的 API」下若仍是 `encrypted=true`，会被丢掉而不是拿去翻译。「翻译弹窗样式」目前仍走这条密文出网，不能用你的 API 填窗。
-- 「官方免费额度」仍然浏览并启动你自己的 `RenpyThief.exe`，登录与额度逻辑不变。
-- 继续包含 v1.0.2：全新内置副本在兼容性保护开启时写入仅用于本机的会话标记；三个可分别保存的自定义提示词槽位。
-- 继续包含 v1.0.1 的修复：64 位补丁 GUI 不再把 Qt 插件路径泄漏给 32 位原版。
+- **Ren'Py 脚本层已关闭**：不会再把 `00unofficial_bridge.rpy` 写入游戏；若游戏 `game\` 里还留着上一版的该文件，拖入时会删掉。
+- **通用注入器明文路由**：若原版拉起 `RenpyInjector-x86.exe`，补丁会注入 `injectroute.dll`，把本机 JSON 明文转到你的 API。官方密文包仍 fail-closed，不解密、不喂模型。
+- 关掉脚本层**不等于**原版一定改走通用注入器。Ren'Py 仍可能走 `RenpyHook` 密文内嵌。这次就是要看实际走哪条。
 
-## 首次使用
+## 测试步骤
 
-1. 安装版完成向导后从桌面或开始菜单启动；便携版先完整解压，再运行 `RenpyThiefPatch.exe`。
-2. 选择翻译来源：
-   - 官方免费额度：点击“浏览…”，选择你自己的 RenpyThief 6.7.8 x86 的 `RenpyThief.exe`。
-   - 我的 API：路径会自动锁定为内置干净 6.7.8，无需再选你电脑上的原版。
-3. 建议保持“启用兼容性保护（推荐）”开启。
-4. 使用「我的 API」时选择 Provider 并填写凭据。使用本机模型时先启动 Ollama（或同类服务）并加载模型，再点“测试 API”。
-5. 点击启动；官方额度模式如出现原版登录页，请按原版要求完成登录。「我的 API」在兼容性保护开启时，全新内置副本一般不再需要先登录官方账号。
-6. **等待补丁明确显示“已就绪，可以拖入游戏”后，再把游戏拖入 RenpyThief。**
-7. Ren'Py 游戏若弹出「请选择翻译样式」，请选 **「使用内嵌样式」**。
-
-补丁不要安装或解压到你自己的原版目录。切换翻译线路前必须先关闭游戏和 RenpyThief，再从补丁重新启动；当前不支持热切换。安装版卸载时会删除本机 `6.7.8Runtime` 工作副本，不会删除你自己的原版程序。
-
-## API 与隐私提示
-
-- DeepSeek、SiliconFlow 和 OpenAI-compatible 使用 API Key；本机模型通常可留空。有道、百度和 Microsoft 使用各自平台要求的凭据。
-- “测试 API”只向所选平台发送固定文本 `こんにちは`，不会发送游戏内容。
-- “我的 API”模式会把待翻译游戏文本发送给你选择的平台或本机服务，云端线路可能产生费用；请自行确认定价、配额和隐私政策。
-- 只有在信任当前 Windows 账户和设备时，才选择将凭据保存到 Windows 凭据管理器。
-- 不要在 Issue、截图或日志中公开 API Key、Cookie、账号信息或完整游戏文本。
-
-## 重要说明与排错
-
-- 安装器和程序尚未商业代码签名，Windows SmartScreen 或安全软件可能提示未知发布者。请只从本项目 GitHub Release 下载并用 `SHA256SUMS.txt` 校验；不要全局关闭安全软件。
-- 一直未显示“已就绪”：关闭游戏和所有 RenpyThief/补丁实例，从补丁重新启动，确认原版窗口可用。官方额度模式仍需完成登录。
-- 本机模型无译文：确认服务已在 `127.0.0.1` 运行，模型名与已加载模型一致，并且补丁选的是“本地模型”而不是官方额度。
-- API 返回 `401/403`：检查凭据和权限；`404`：检查模型或 Base URL；`429`：检查余额、配额和速率限制；网络超时：检查网络、VPN/代理与平台地域可用性。
-- 提示端口 `19899` 被占用：关闭旧的补丁或 Bridge 进程后重试。
-- Ren'Py 内嵌没有中文：确认选的是「使用内嵌样式」，并已等到“已就绪”后再拖入；不要选「翻译弹窗样式」。
-- 仍无法解决时，点击 GUI 中“打开诊断目录”，仅提交经过人工检查和脱敏的相关日志片段。
-
-详细说明见包内 `QUICK_START.txt`、`README.md` 和 `UPDATE_GUARD_CONTRACT.md`。
+1. 完全退出旧补丁、RenpyThief 和游戏。
+2. 用本测试包启动，选「我的 API」，等到“已就绪”。
+3. 拖入 PatchSmokeVN 或其它 Ren'Py 游戏。弹出「请选择翻译样式」时仍选「使用内嵌样式」。
+4. 看任务管理器：
+   - 出现 `RenpyInjector-x86.exe`，控制台有 `Routed generic injector plaintext`，游戏里有中文 → 通用方法对 Ren'Py 可能成立。
+   - 只有 `RenpyInject32/64` / Hook，游戏没有中文 → 原版仍走专用内嵌，还不能废脚本层。
+5. 把上述现象告诉维护者即可，不必发密钥或完整台词。
 
 ## 已知限制
 
-- 仅实测 RenpyThief 6.7.8 x86，且仍依赖原版引擎识别、游戏资源部署和注入流程。
-- Ren'Py 内嵌样式依赖写入游戏 `game\` 目录的脚本；非 Ren'Py 游戏若仍发本机明文 `GET /?text=`，会继续由端口劫持转发。
-- 「翻译弹窗样式」走官方 `sendTranslate` 密文包，「我的 API」下无法填窗。
-- 不支持运行中切换线路，不自动检测官方额度耗尽，也不会自动回退到其他 Provider。
-- 未知官方接口仍会透传；部分游戏若硬依赖被拒绝的配置/补齐下载，可能无法注入。
-- 更新保护只匹配已知版本检查，不能保证未来任意版本自动兼容。
-- 若出现“更新保护未确认”，表示确认窗口内没有看到已知版本接口，并不等于保护已成功，也不等于更新请求已经放行。
-- 翻译质量、速率、价格和地域限制主要由所选模型或平台决定。
-
-## 许可证与对应源码
-
-项目源码采用 `GPL-3.0-only`，第三方组件适用各自许可证。`v1.0.3` 标签对应本次安装版和便携版的补丁源码。PyQt5 5.15.11、Qt 5.15.2、MinHook 1.3.4 和 CPython 3.12.7 的锁定源码归档与 v0.1.2 字节级相同，不再重复上传；请从 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2) 获取并核对 `SOURCE_ARCHIVES.SHA256`。这些源码附件面向开发者和审计者，普通用户无需下载。
+- 正式版 `v1.0.3` 的 Ren'Py 脚本层在本号是故意关掉的，Ren'Py 内嵌可能暂时没有中文。
+- `injectroute` 目前只支持 32 位 `RenpyInjector-x86.exe`。
+- 「翻译弹窗样式」仍走官方 `sendTranslate` 密文，不能用你的 API 填窗。

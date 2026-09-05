@@ -8,4 +8,5 @@ EXPORTS
     ??1QVariant@@QAE@XZ
     ?fromEncoded@QUrl@@SA?AV1@ABVQByteArray@@W4ParsingMode@1@@Z
     ?constData@QByteArray@@QBEPBDXZ
+    ?size@QByteArray@@QBEHXZ
     ?toEncoded@QUrl@@QBE?AVQByteArray@@V?$QUrlTwoFlags@W4UrlFormattingOption@QUrl@@W4ComponentFormattingOption@2@@@@Z
