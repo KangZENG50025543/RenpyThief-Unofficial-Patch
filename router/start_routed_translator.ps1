@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('echo', 'openai', 'youdao', 'baidu', 'microsoft')]
-    [string]$Mode = 'echo',
+    [string]$Mode = 'openai',
 
     [string]$BaseUrl = $env:UPSTREAM_BASE_URL,
 
@@ -46,10 +46,49 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+# StrictMode treats $LASTEXITCODE as unset until a native command has run.
+# Do not read $script:Name in this file: [CmdletBinding()] + StrictMode
+# reports those as unset even after a top-level assignment.
+$global:LASTEXITCODE = 0
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($TranslatorPath)) {
     $TranslatorPath = Join-Path $scriptDir '..\..\RenpyThief.exe'
+}
+
+function Write-StrictModeFailure {
+    param($ErrorRecord)
+    if ($null -eq $ErrorRecord) { return }
+    $line = ''
+    if ($null -ne $ErrorRecord.InvocationInfo) {
+        $line = [string]$ErrorRecord.InvocationInfo.PositionMessage
+    }
+    $message = 'STRICT {0} {1} {2}' -f $ErrorRecord.FullyQualifiedErrorId, $ErrorRecord.Exception.Message, $line
+    Write-Host $message
+    $log = Join-Path $scriptDir 'strict_error.log'
+    Add-Content -LiteralPath $log -Value $message -ErrorAction SilentlyContinue
+}
+
+trap {
+    Write-StrictModeFailure -ErrorRecord $_
+    break
+}
+
+function Resolve-DumpOnlyPython {
+    $command = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+    foreach ($candidate in @(
+        (Join-Path $env:USERPROFILE 'anaconda3\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe')
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    return $null
 }
 
 $bridgePort = 19899
@@ -76,8 +115,9 @@ function Get-PortListeners {
 
     $netstatPath = Join-Path $env:SystemRoot 'System32\netstat.exe'
     $lines = & $netstatPath -ano -p TCP
-    if ($LASTEXITCODE -ne 0) {
-        throw "netstat failed while checking TCP port $Port (exit $LASTEXITCODE)."
+    $netstatExit = $global:LASTEXITCODE
+    if ($netstatExit -ne 0) {
+        throw "netstat failed while checking TCP port $Port (exit $netstatExit)."
     }
 
     $results = @()
@@ -85,7 +125,7 @@ function Get-PortListeners {
         if ($line -notmatch '^\s*TCP\s+(?<local>\S+)\s+\S+\s+LISTENING\s+(?<owner>\d+)\s*$') {
             continue
         }
-        $localEndpoint = $Matches.local
+        $localEndpoint = [string]$Matches['local']
         $separator = $localEndpoint.LastIndexOf(':')
         if ($separator -lt 0) {
             continue
@@ -104,7 +144,7 @@ function Get-PortListeners {
         $results += [pscustomobject]@{
             Address = $addressText
             Port = $parsedPort
-            OwnerPid = [int]$Matches.owner
+            OwnerPid = [int]$Matches['owner']
             IsLoopback = $isLoopback
             IsWildcard = $isWildcard
         }
@@ -190,10 +230,24 @@ function Assert-BridgeListenerOwner {
     }
 }
 
+function Test-RenpyScriptBridgeEnabled {
+    # 1.1.0：不写游戏脚本层。解袋走主进程桌上的 text+translateType。
+    # Do not use $script: flags here: [CmdletBinding()] + StrictMode treats
+    # $script:Name as unset even after a top-level assignment.
+    return $false
+}
+
+function Test-FirstHopHijackEnabled {
+    # 1.1.0：不要提前截走第一跳密文回声，让主进程自己解袋。
+    return $false
+}
+
 function Stop-OwnedBridge {
-    if ($null -ne $script:bridgeProcess -and !$script:bridgeProcess.HasExited) {
-        $script:bridgeProcess.Kill()
-        $script:bridgeProcess.WaitForExit(5000) | Out-Null
+    param($Process)
+    if ($null -eq $Process) { return }
+    if (!$Process.HasExited) {
+        $Process.Kill()
+        $Process.WaitForExit(5000) | Out-Null
     }
 }
 
@@ -258,9 +312,6 @@ function Test-RenpyGameRoot {
     return @(Get-ChildItem -LiteralPath $gameDir -Filter '*.rpy' -File -ErrorAction SilentlyContinue).Count -gt 0
 }
 
-# 1.0.4.0 测试：关掉 Ren'Py 脚本层，看原版会不会改走通用注入器。
-$EnableRenpyScriptBridge = $false
-
 function Install-UnofficialRenpyBridge {
     param([string]$GameRoot)
     $source = Join-Path $routerDir '00unofficial_bridge.rpy'
@@ -297,21 +348,35 @@ function Sync-InjectorPlaintextRoute {
         [string]$NetInject,
         [hashtable]$Seen
     )
+    if ($null -eq $Seen) { return }
     if (!(Test-Path -LiteralPath $RuntimeDll -PathType Leaf)) { return }
     foreach ($name in @('RenpyInjector-x86.exe', 'RenpyInjector-x64.exe')) {
-        foreach ($process in @(Get-Process -Name ($name.Substring(0, $name.Length - 4)) -ErrorAction SilentlyContinue)) {
+        $candidates = @(
+            Get-Process -Name ($name.Substring(0, $name.Length - 4)) -ErrorAction SilentlyContinue |
+                Where-Object { $null -ne $_ }
+        )
+        foreach ($process in $candidates) {
             $pidValue = [int]$process.Id
             if ($Seen.ContainsKey($pidValue)) { continue }
             $exePath = ''
-            try { $exePath = $process.Path } catch { $exePath = '' }
+            try { $exePath = [string]$process.Path } catch { $exePath = '' }
             if (-not (Test-PathUnderRoot -Root $OriginRoot -Candidate $exePath)) { continue }
             if ($name -eq 'RenpyInjector-x64.exe') {
                 Write-Host "Skipping 64-bit injector PID $pidValue; injectroute is x86-only in this build."
                 $Seen[$pidValue] = 'skipped-x64'
                 continue
             }
-            $output = @(& $NetInject "$pidValue" $RuntimeDll 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $savedErrorActionPreference = $ErrorActionPreference
+            $output = @()
+            $injectExitCode = 0
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& $NetInject "$pidValue" $RuntimeDll 2>&1)
+                $injectExitCode = $global:LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $savedErrorActionPreference
+            }
+            if ($injectExitCode -ne 0) {
                 $text = ($output | ForEach-Object { $_.ToString() }) -join ' '
                 Write-Warning "injectroute attach failed for PID ${pidValue}: $text"
                 $Seen[$pidValue] = 'failed'
@@ -458,7 +523,67 @@ function Stop-UnroutedTranslator {
     }
 }
 
+function New-RoutedBridgeArgumentList {
+    param(
+        [Parameter(Mandatory = $true)][string]$Program,
+        [Parameter(Mandatory = $true)][string]$LogPath,
+        [Parameter(Mandatory = $true)][string]$BridgeMode,
+        [Parameter(Mandatory = $true)][string]$BridgePayloadProfile,
+        [Parameter(Mandatory = $true)][string]$BridgeThinking,
+        [Parameter(Mandatory = $true)][string]$BridgeReasoningEffort,
+        [Parameter(Mandatory = $true)][string]$BridgeMaxConcurrency,
+        [Parameter(Mandatory = $true)][string]$BridgeUpstreamConcurrency,
+        [Parameter(Mandatory = $true)][string]$BridgeCacheEntries,
+        [Parameter(Mandatory = $true)][string]$BridgeCacheBytes,
+        [string]$PythonScript = '',
+        [string]$BridgeBaseUrl = '',
+        [string]$BridgeModel = ''
+    )
+
+    $items = New-Object 'System.Collections.Generic.List[string]'
+    if (-not [string]::IsNullOrWhiteSpace($PythonScript)) {
+        $items.Add(('"{0}"' -f $PythonScript))
+    }
+    $parts = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($part in @(
+        '--host', '127.0.0.1',
+        '--port', '19899',
+        '--mode', $BridgeMode,
+        '--payload-profile', $BridgePayloadProfile,
+        '--thinking', $BridgeThinking,
+        '--reasoning-effort', $BridgeReasoningEffort,
+        '--max-concurrency', $BridgeMaxConcurrency,
+        '--upstream-concurrency', $BridgeUpstreamConcurrency,
+        '--cache-entries', $BridgeCacheEntries,
+        '--cache-bytes', $BridgeCacheBytes,
+        '--log-path', ('"{0}"' -f $LogPath),
+        '--no-log-content'
+    )) {
+        $parts.Add($part)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BridgeBaseUrl)) {
+        $parts.Add('--base-url')
+        $parts.Add(('{0}' -f $BridgeBaseUrl))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BridgeModel)) {
+        $parts.Add('--model')
+        $parts.Add($BridgeModel)
+    }
+    foreach ($part in $parts) {
+        if ([string]::IsNullOrWhiteSpace($part)) {
+            throw 'Routed bridge argument list contained an empty value.'
+        }
+        $items.Add($part)
+    }
+    if ([string]::IsNullOrWhiteSpace($Program)) {
+        throw 'Routed bridge program was empty.'
+    }
+    return $items.ToArray()
+}
+
 try {
+    Write-Host "1.1.0 hub route: first-hop hijack off; bridge Mode=$Mode payload=$PayloadProfile."
+
     $requiredFiles = @($routeDllSource, $injectRouteDllSource, $injectorPath)
     if ($blockUpdatesEnabled) {
         $requiredFiles += @($guardLauncherPath, $versionGuardSource, $versionGuardConfig)
@@ -470,15 +595,15 @@ try {
     }
 
     $bridgeProgram = $null
-    $bridgeArgumentPrefix = @()
-    if ([string]::IsNullOrWhiteSpace($BridgeExecutable)) {
-        if (!(Test-Path -LiteralPath $bridgePath -PathType Leaf)) {
-            throw "Required file not found: $bridgePath"
-        }
-        $pythonCommand = Get-Command python.exe -ErrorAction Stop
-        $bridgeProgram = $pythonCommand.Source
-        $bridgeArgumentPrefix = @(('"{0}"' -f $bridgePath))
-    } else {
+    $pythonScriptForBridge = ''
+    $pythonPath = Resolve-DumpOnlyPython
+    if ((Test-Path -LiteralPath $bridgePath -PathType Leaf) -and (-not [string]::IsNullOrWhiteSpace($pythonPath))) {
+        # Frozen GUI still passes -BridgeExecutable translate_bridge.exe.
+        # That exe can lag this script and miss URL text= / official echo.
+        $bridgeProgram = $pythonPath
+        $pythonScriptForBridge = $bridgePath
+        Write-Host '1.1.0: using Python translate_bridge.py (ignore packaged exe so URL text= is read).'
+    } elseif (-not [string]::IsNullOrWhiteSpace($BridgeExecutable)) {
         $resolvedBridgePath = Resolve-Path -LiteralPath $BridgeExecutable -ErrorAction Stop
         if ($resolvedBridgePath.Provider.Name -ne 'FileSystem') {
             throw 'BridgeExecutable must use the FileSystem provider.'
@@ -490,66 +615,9 @@ try {
             throw 'BridgeExecutable must be a regular .exe file, not a directory or reparse point.'
         }
         $bridgeProgram = $bridgeItem.FullName
-    }
-
-    if ($Mode -eq 'openai') {
-        if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
-            throw 'OpenAI mode requires -BaseUrl or the UPSTREAM_BASE_URL environment variable.'
-        }
-        if ([string]::IsNullOrWhiteSpace($Model)) {
-            throw 'OpenAI mode requires -Model or the UPSTREAM_MODEL environment variable.'
-        }
-        $upstreamUri = $null
-        if (![Uri]::TryCreate($BaseUrl, [UriKind]::Absolute, [ref]$upstreamUri) -or
-            $upstreamUri.Scheme -notin @('http', 'https') -or
-            ![string]::IsNullOrEmpty($upstreamUri.UserInfo)) {
-            throw 'BaseUrl must be an absolute HTTP(S) URL without embedded credentials.'
-        }
-        if ($BaseUrl -match '[\s"\r\n]' -or $Model -match '[\s"\r\n]') {
-            throw 'BaseUrl and Model cannot contain whitespace, quotes, or line breaks.'
-        }
-        if ($UpstreamConcurrency -gt $BridgeConcurrency) {
-            throw 'UpstreamConcurrency cannot exceed BridgeConcurrency.'
-        }
-        if ($PayloadProfile -eq 'siliconflow-qwen') {
-            if ($Thinking -notin @('omit', 'disabled')) {
-                throw 'siliconflow-qwen is a non-thinking profile; Thinking must be omit or disabled.'
-            }
-            if ($ReasoningEffort -ne 'none') {
-                throw 'siliconflow-qwen does not accept ReasoningEffort.'
-            }
-        }
-        if ($PayloadProfile -eq 'hunyuan-mt' -and
-            ($Thinking -ne 'omit' -or $ReasoningEffort -ne 'none')) {
-            throw 'hunyuan-mt requires Thinking=omit and ReasoningEffort=none.'
-        }
-        if (![string]::IsNullOrWhiteSpace($ApiKeyFile)) {
-            $resolvedApiKeyPath = Resolve-Path -LiteralPath $ApiKeyFile -ErrorAction Stop
-            if ($resolvedApiKeyPath.Provider.Name -ne 'FileSystem') {
-                throw 'ApiKeyFile must use the FileSystem provider.'
-            }
-            $resolvedApiKeyFile = $resolvedApiKeyPath.ProviderPath
-            $apiKeyItem = Get-Item -LiteralPath $resolvedApiKeyFile -Force -ErrorAction Stop
-            if (!($apiKeyItem -is [IO.FileInfo]) -or
-                ($apiKeyItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-                throw 'ApiKeyFile must be a regular file, not a directory or reparse point.'
-            }
-            if ($apiKeyItem.Length -lt 1 -or $apiKeyItem.Length -gt 4096) {
-                throw 'ApiKeyFile must be between 1 and 4096 bytes.'
-            }
-        }
-    } elseif ($Mode -in @('youdao', 'baidu', 'microsoft')) {
-        if ([string]::IsNullOrWhiteSpace($env:UPSTREAM_CREDENTIALS_JSON)) {
-            throw "$Mode mode requires credentials from the patch environment."
-        }
-        if ($UpstreamConcurrency -gt $BridgeConcurrency) {
-            throw 'UpstreamConcurrency cannot exceed BridgeConcurrency.'
-        }
-        if (![string]::IsNullOrWhiteSpace($ApiKeyFile)) {
-            throw 'ApiKeyFile is accepted only in openai mode.'
-        }
-    } elseif (![string]::IsNullOrWhiteSpace($ApiKeyFile)) {
-        throw 'ApiKeyFile is accepted only in openai mode.'
+        Write-Host '1.1.0: Python unavailable; falling back to packaged translate_bridge.exe.'
+    } else {
+        throw "Required file not found: $bridgePath"
     }
 
     Assert-NoTranslatorProcess
@@ -558,32 +626,20 @@ try {
         throw "TCP port 127.0.0.1:$bridgePort is already in use. Stop the existing service or choose a clean session; the fixed ipcroute bridge port cannot be shared."
     }
 
-    $bridgeArgs = @($bridgeArgumentPrefix) + @(
-        '--host', '127.0.0.1', '--port', "$bridgePort",
-        '--mode', $Mode, '--payload-profile', $PayloadProfile,
-        '--thinking', $Thinking,
-        '--reasoning-effort', $ReasoningEffort,
-        '--max-concurrency', "$BridgeConcurrency",
-        '--upstream-concurrency', "$UpstreamConcurrency",
-        '--cache-entries', "$CacheEntries",
-        '--cache-bytes', "$CacheBytes",
-        '--log-path', ('"{0}"' -f (Join-Path $routerDir 'bridge_requests.log')),
-        '--no-log-content'
-    )
-    if (Test-Path -LiteralPath (Join-Path $routerDir 'enable_content_tap.txt') -PathType Leaf) {
-        $bridgeArgs += @('--tap-content')
-    }
-    if ($Mode -eq 'openai') {
-        $bridgeArgs += @('--base-url', $BaseUrl, '--model', $Model)
-        if ($null -ne $resolvedApiKeyFile) {
-            # Start-Process joins ArgumentList into one native command line.
-            # Quote the path because the workspace can contain spaces; Windows
-            # file names cannot contain a literal double quote.
-            $bridgeArgs += @('--api-key-file', ('"{0}"' -f $resolvedApiKeyFile))
-        }
-    }
-    # Only the key-file path enters the command line. PowerShell never reads or
-    # stores the secret; the bridge child reads it directly and never logs it.
+    $bridgeLogPath = Join-Path $routerDir 'bridge_requests.log'
+    $bridgeArgs = New-RoutedBridgeArgumentList -Program $bridgeProgram `
+        -LogPath $bridgeLogPath `
+        -BridgeMode $Mode `
+        -BridgePayloadProfile $PayloadProfile `
+        -BridgeThinking $Thinking `
+        -BridgeReasoningEffort $ReasoningEffort `
+        -BridgeMaxConcurrency ([string]$BridgeConcurrency) `
+        -BridgeUpstreamConcurrency ([string]$UpstreamConcurrency) `
+        -BridgeCacheEntries ([string]$CacheEntries) `
+        -BridgeCacheBytes ([string]$CacheBytes) `
+        -PythonScript $pythonScriptForBridge `
+        -BridgeBaseUrl ([string]$BaseUrl) `
+        -BridgeModel ([string]$Model)
     $bridgeProcess = Start-Process -FilePath $bridgeProgram -ArgumentList $bridgeArgs `
         -WorkingDirectory $routerDir -WindowStyle Hidden -PassThru
     Clear-BridgeOnlyEnvironment
@@ -652,91 +708,103 @@ try {
     $runtimeDll = Join-Path $runtimeDir 'ipcroute.dll'
     $runtimeInjectRouteDll = Join-Path $runtimeDir 'injectroute.dll'
     $runtimeIni = Join-Path $runtimeDir 'ipcroute.ini'
-    Copy-Item -LiteralPath $routeDllSource -Destination $runtimeDll -ErrorAction Stop
-    Copy-Item -LiteralPath $injectRouteDllSource -Destination $runtimeInjectRouteDll -ErrorAction Stop
-    [IO.File]::WriteAllText(
-        $runtimeIni,
-        "[ipcroute]`r`nmode=hijack`r`n",
-        (New-Object Text.UTF8Encoding($false))
-    )
-    if ((Get-FileHash -LiteralPath $routeDllSource -Algorithm SHA256).Hash -ne
-        (Get-FileHash -LiteralPath $runtimeDll -Algorithm SHA256).Hash) {
-        throw "Runtime DLL hash verification failed: $runtimeDll"
-    }
-
     $routeLog = Join-Path $runtimeDir 'ipcroute.log'
-    if (Test-Path -LiteralPath $routeLog) {
-        throw "New runtime unexpectedly contains an old readiness log: $routeLog"
-    }
 
-    # Windows PowerShell turns native stderr into an ErrorRecord. Capture it so
-    # guarded injector refusals retain their precise message and exit code.
-    $savedErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $injectOutput = @(& $injectorPath "$($translatorProcess.Id)" $runtimeDll 2>&1)
-        $injectExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $savedErrorActionPreference
-    }
-    if ($injectExitCode -ne 0) {
-        $injectText = ($injectOutput | ForEach-Object { $_.ToString() }) -join ' '
-        throw "netinject failed with exit code ${injectExitCode}: $injectText"
-    }
-    $routeDllLoaded = $true
+    if (Test-FirstHopHijackEnabled) {
+        Copy-Item -LiteralPath $routeDllSource -Destination $runtimeDll -ErrorAction Stop
+        Copy-Item -LiteralPath $injectRouteDllSource -Destination $runtimeInjectRouteDll -ErrorAction Stop
+        [IO.File]::WriteAllText(
+            $runtimeIni,
+            "[ipcroute]`r`nmode=hijack`r`n",
+            (New-Object Text.UTF8Encoding($false))
+        )
+        if ((Get-FileHash -LiteralPath $routeDllSource -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $runtimeDll -Algorithm SHA256).Hash) {
+            throw "Runtime DLL hash verification failed: $runtimeDll"
+        }
 
-    $hookDeadline = [DateTime]::UtcNow.AddSeconds(5)
-    $hookReady = $false
-    while ([DateTime]::UtcNow -lt $hookDeadline) {
-        if (Test-Path -LiteralPath $routeLog -PathType Leaf) {
-            $logText = Get-Content -LiteralPath $routeLog -Raw
-            if ($logText -match 'configuration mode=hijack' -and
-                $logText -match 'hook enabled status=0') {
-                $hookReady = $true
+        if (Test-Path -LiteralPath $routeLog) {
+            throw "New runtime unexpectedly contains an old readiness log: $routeLog"
+        }
+
+        # Windows PowerShell turns native stderr into an ErrorRecord. Capture it so
+        # guarded injector refusals retain their precise message and exit code.
+        $savedErrorActionPreference = $ErrorActionPreference
+        $injectOutput = @()
+        $injectExitCode = 0
+        try {
+            $ErrorActionPreference = 'Continue'
+            $injectOutput = @(& $injectorPath "$($translatorProcess.Id)" $runtimeDll 2>&1)
+            $injectExitCode = $global:LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+        }
+        if ($injectExitCode -ne 0) {
+            $injectText = ($injectOutput | ForEach-Object { $_.ToString() }) -join ' '
+            throw "netinject failed with exit code ${injectExitCode}: $injectText"
+        }
+        $routeDllLoaded = $true
+
+        $hookDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        $hookReady = $false
+        while ([DateTime]::UtcNow -lt $hookDeadline) {
+            if (Test-Path -LiteralPath $routeLog -PathType Leaf) {
+                $logText = [string](Get-Content -LiteralPath $routeLog -Raw)
+                if ($logText -match 'configuration mode=hijack' -and
+                    $logText -match 'hook enabled status=0') {
+                    $hookReady = $true
+                    break
+                }
+                if ($logText -match 'initialization failed|hook create failed|hook enabled status=(?!0)\d+') {
+                    throw "ipcroute loaded but its WSAAccept hook failed. Restart RenpyThief before retrying. Log: $routeLog"
+                }
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if (!$hookReady) {
+            throw "ipcroute DLL loaded but did not confirm hook readiness within 5 seconds. Restart RenpyThief before retrying. Log: $routeLog"
+        }
+
+        # RenpyThief creates three consecutive loopback listeners. Do not announce
+        # readiness (and therefore do not invite a game launch) until the DLL has
+        # observed all three and selected the lowest translation port.
+        $baseDeadline = [DateTime]::UtcNow.AddSeconds($DynamicPortTimeoutSec)
+        $dynamicBase = 0
+        while ([DateTime]::UtcNow -lt $baseDeadline) {
+            if (!(Get-Process -Id $translatorProcess.Id -ErrorAction SilentlyContinue)) {
+                throw 'RenpyThief exited before publishing its dynamic translation port.'
+            }
+            if ($bridgeProcess.HasExited) {
+                throw "Translation bridge exited before dynamic-port discovery with code $($bridgeProcess.ExitCode)."
+            }
+            $logText = [string](Get-Content -LiteralPath $routeLog -Raw)
+            $baseMatch = [regex]::Match($logText, 'dynamic_base=(\d+) listeners=')
+            if ($baseMatch.Success -and
+                [int]::TryParse($baseMatch.Groups[1].Value, [ref]$dynamicBase) -and
+                $dynamicBase -ge 1 -and $dynamicBase -le 65533) {
                 break
             }
-            if ($logText -match 'initialization failed|hook create failed|hook enabled status=(?!0)\d+') {
-                throw "ipcroute loaded but its WSAAccept hook failed. Restart RenpyThief before retrying. Log: $routeLog"
-            }
+            $dynamicBase = 0
+            Start-Sleep -Milliseconds 100
         }
-        Start-Sleep -Milliseconds 100
-    }
-    if (!$hookReady) {
-        throw "ipcroute DLL loaded but did not confirm hook readiness within 5 seconds. Restart RenpyThief before retrying. Log: $routeLog"
-    }
+        if ($dynamicBase -eq 0) {
+            throw "ipcroute did not discover RenpyThief's dynamic three-port group within $DynamicPortTimeoutSec seconds. Do not drag a game; restart RenpyThief before retrying. Log: $routeLog"
+        }
 
-    # RenpyThief creates three consecutive loopback listeners. Do not announce
-    # readiness (and therefore do not invite a game launch) until the DLL has
-    # observed all three and selected the lowest translation port.
-    $baseDeadline = [DateTime]::UtcNow.AddSeconds($DynamicPortTimeoutSec)
-    $dynamicBase = 0
-    while ([DateTime]::UtcNow -lt $baseDeadline) {
-        if (!(Get-Process -Id $translatorProcess.Id -ErrorAction SilentlyContinue)) {
-            throw 'RenpyThief exited before publishing its dynamic translation port.'
-        }
         if ($bridgeProcess.HasExited) {
-            throw "Translation bridge exited before dynamic-port discovery with code $($bridgeProcess.ExitCode)."
+            throw "Translation bridge exited immediately before route activation with code $($bridgeProcess.ExitCode)."
         }
-        $logText = Get-Content -LiteralPath $routeLog -Raw
-        $baseMatch = [regex]::Match($logText, 'dynamic_base=(\d+) listeners=')
-        if ($baseMatch.Success -and
-            [int]::TryParse($baseMatch.Groups[1].Value, [ref]$dynamicBase) -and
-            $dynamicBase -ge 1 -and $dynamicBase -le 65533) {
-            break
+        Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
+        $routeActive = $true
+        Write-Host "Translator-wide route active: RenpyThief PID $($translatorProcess.Id), dynamic loopback base $dynamicBase -> 127.0.0.1:$bridgePort ($Mode)."
+    } else {
+        if ($bridgeProcess.HasExited) {
+            throw "Translation bridge exited immediately before route activation with code $($bridgeProcess.ExitCode)."
         }
-        $dynamicBase = 0
-        Start-Sleep -Milliseconds 100
+        Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
+        $routeActive = $true
+        Write-Host "Translator-wide route active: RenpyThief PID $($translatorProcess.Id), hub route (no first-hop hijack) -> 127.0.0.1:$bridgePort ($Mode)."
     }
-    if ($dynamicBase -eq 0) {
-        throw "ipcroute did not discover RenpyThief's dynamic three-port group within $DynamicPortTimeoutSec seconds. Do not drag a game; restart RenpyThief before retrying. Log: $routeLog"
-    }
-
-    if ($bridgeProcess.HasExited) {
-        throw "Translation bridge exited immediately before route activation with code $($bridgeProcess.ExitCode)."
-    }
-    Assert-BridgeListenerOwner -ProcessId $bridgeProcess.Id
-    $routeActive = $true
-    Write-Host "Translator-wide route active: RenpyThief PID $($translatorProcess.Id), dynamic loopback base $dynamicBase -> 127.0.0.1:$bridgePort ($Mode)."
     Write-Host "Runtime: $runtimeDir"
     Write-Host 'No game configuration was read or changed. Keep this launcher running while translating.'
 
@@ -748,22 +816,29 @@ try {
         if ($bridgeProcess.HasExited) {
             throw "Translation bridge exited unexpectedly with code $($bridgeProcess.ExitCode). RenpyThief must be restarted before retrying."
         }
-        $droppedGame = Read-LastInjectPath -SettingsPath $settingsPath
-        if ($droppedGame -and $droppedGame -ne $lastBridgeGame) {
-            if ($EnableRenpyScriptBridge) {
-                if (Install-UnofficialRenpyBridge -GameRoot $droppedGame) {
-                    Write-Host "Installed unofficial Ren'Py bridge script into the dropped game."
+        try {
+            $droppedGame = Read-LastInjectPath -SettingsPath $settingsPath
+            if ($droppedGame -and $droppedGame -ne $lastBridgeGame) {
+                if (Test-RenpyScriptBridgeEnabled) {
+                    if (Install-UnofficialRenpyBridge -GameRoot $droppedGame) {
+                        Write-Host "Installed unofficial Ren'Py bridge script into the dropped game."
+                    }
+                } elseif (Remove-UnofficialRenpyBridge -GameRoot $droppedGame) {
+                    Write-Host "Ren'Py script bridge disabled; removed leftover 00unofficial_bridge.rpy."
+                } else {
+                    Write-Host "Ren'Py script bridge disabled; not installing 00unofficial_bridge.rpy."
                 }
-            } elseif (Remove-UnofficialRenpyBridge -GameRoot $droppedGame) {
-                Write-Host "Ren'Py script bridge disabled for generic-injector test; removed leftover 00unofficial_bridge.rpy."
-            } else {
-                Write-Host "Ren'Py script bridge disabled for generic-injector test; not installing 00unofficial_bridge.rpy."
+                $lastBridgeGame = $droppedGame
             }
-            $lastBridgeGame = $droppedGame
+            if (Test-FirstHopHijackEnabled) {
+                Sync-InjectorPlaintextRoute -OriginRoot $originRoot `
+                    -RuntimeDll $runtimeInjectRouteDll -NetInject $injectorPath `
+                    -Seen $injectorRouteSeen
+            }
+        } catch {
+            Write-StrictModeFailure -ErrorRecord $_
+            Write-Warning ("Route maintenance failed: {0} {1}" -f $_.FullyQualifiedErrorId, $_.Exception.Message)
         }
-        Sync-InjectorPlaintextRoute -OriginRoot $originRoot `
-            -RuntimeDll $runtimeInjectRouteDll -NetInject $injectorPath `
-            -Seen $injectorRouteSeen
         Start-Sleep -Milliseconds 500
     }
     Write-Host 'RenpyThief exited; stopping the bridge started by this launcher.'
@@ -787,6 +862,6 @@ try {
         # refused termination, retaining the bridge is safer for the loaded hook.
         Write-Warning "Unrouted RenpyThief PID $($translatorProcess.Id) could not be closed; its bridge was left running. Do not use that window."
     } else {
-        Stop-OwnedBridge
+        Stop-OwnedBridge -Process $bridgeProcess
     }
 }

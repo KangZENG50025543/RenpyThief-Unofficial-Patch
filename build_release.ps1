@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.4.0',
+    [string]$Version = '1.1.0',
     [string]$Python = '',
     [string]$IsccPath = '',
     [switch]$PublicRelease
@@ -146,8 +146,8 @@ New-Item -ItemType Directory -Path $releaseRouter -ErrorAction Stop | Out-Null
 Copy-Item -Path (Join-Path $workRoot 'bridge-dist\translate_bridge\*') `
     -Destination $releaseRouter -Recurse -Force
 foreach ($name in @(
-    'start_routed_translator.ps1', 'ipcroute.dll', 'injectroute.dll', 'netinject.exe',
-    'guardlaunch.exe', 'versionguard.dll', 'versionguard.ini',
+    'start_routed_translator.ps1', 'translate_bridge.py', 'ipcroute.dll', 'injectroute.dll',
+    'netinject.exe', 'guardlaunch.exe', 'versionguard.dll', 'versionguard.ini',
     '00unofficial_bridge.rpy'
 )) {
     Copy-Item -LiteralPath (Join-Path $sourceRouter $name) -Destination $releaseRouter

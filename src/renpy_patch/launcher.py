@@ -170,14 +170,12 @@ def build_custom_command(
     if script is None or not script.is_file():
         raise FileNotFoundError("找不到补丁路由组件 start_routed_translator.ps1。")
 
-    bridge_mode = (
-        profile.payload_profile
-        if profile.payload_profile in {"youdao", "baidu", "microsoft"}
-        else "openai"
-    )
-    bridge_payload_profile = (
-        profile.payload_profile if bridge_mode == "openai" else "openai"
-    )
+    if profile.payload_profile in {"youdao", "baidu", "microsoft"}:
+        bridge_mode = profile.payload_profile
+        bridge_payload_profile = "openai"
+    else:
+        bridge_mode = "openai"
+        bridge_payload_profile = profile.payload_profile
 
     command = [
         str(_powershell_path()),
@@ -538,39 +536,9 @@ class PatchLauncher:
         if _has_existing_translator():
             raise RuntimeError("RenpyThief 已经在运行；请先正常关闭后再启动。")
 
-        translator = resolve_launch_translator(settings)
+        resolve_launch_translator(settings)
 
         self._emit(LaunchEventKind.STARTING, "正在启动……")
-        if mode is TranslationMode.OFFICIAL:
-            guard_warning: str | None = None
-            if _block_updates(settings):
-                guarded_launch = _launch_guarded_translator(translator)
-                process = guarded_launch.process
-                guard_warning = guarded_launch.warning
-            else:
-                process = subprocess.Popen(
-                    [str(translator.resolve())],
-                    cwd=str(translator.resolve().parent),
-                    env=_sanitized_translator_environment(),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            with self._lock:
-                self._process = process
-                self._translator_pid = process.pid
-                self._mode = mode
-                self._stop_requested = False
-            if guard_warning is not None:
-                self._emit(LaunchEventKind.WARNING, guard_warning, process.pid)
-            threading.Thread(
-                target=self._monitor_official,
-                args=(process,),
-                name="official-process-monitor",
-                daemon=True,
-            ).start()
-            return
-
         command = build_custom_command(settings)
         environment = _custom_bridge_environment(settings, credentials)
         process = subprocess.Popen(
@@ -593,61 +561,6 @@ class PatchLauncher:
             name="custom-process-monitor",
             daemon=True,
         ).start()
-
-    def _monitor_official(
-        self, process: subprocess.Popen[bytes] | _WindowsPidProcess
-    ) -> None:
-        window_deadline = time.monotonic() + 15.0
-        while process.poll() is None and time.monotonic() < window_deadline:
-            if _has_visible_window(process.pid):
-                self._emit(
-                    LaunchEventKind.READY,
-                    "官方额度模式已启动；本地转发未启用。",
-                    process.pid,
-                )
-                with self._lock:
-                    should_stop = self._stop_requested
-                if should_stop:
-                    _request_window_close(process.pid)
-                break
-            time.sleep(0.1)
-        else:
-            with self._lock:
-                requested = self._stop_requested
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
-            with self._lock:
-                if self._process is process:
-                    self._process = None
-                    self._translator_pid = None
-                    self._mode = None
-            if requested:
-                self._emit(LaunchEventKind.EXITED, "启动已取消，RenpyThief 已关闭。")
-            else:
-                self._emit(
-                    LaunchEventKind.ERROR,
-                    "RenpyThief 未能在 15 秒内显示可用窗口。",
-                )
-            return
-
-        return_code = process.wait()
-        with self._lock:
-            requested = self._stop_requested
-            if self._process is process:
-                self._process = None
-                self._translator_pid = None
-                self._mode = None
-        if requested or return_code == 0:
-            self._emit(LaunchEventKind.EXITED, "RenpyThief 已关闭。")
-        else:
-            self._emit(
-                LaunchEventKind.ERROR,
-                f"RenpyThief 异常退出，代码 {return_code}。",
-            )
 
     def _monitor_custom(self, process: subprocess.Popen[bytes]) -> None:
         ready = False
@@ -678,8 +591,7 @@ class PatchLauncher:
                 ready = True
                 self._emit(
                     LaunchEventKind.READY,
-                    "自定义 API 路由已激活，可以拖入游戏。"
-                    "1.0.4.0 测试已关闭 Ren'Py 脚本层；看任务管理器是否出现 RenpyInjector。",
+                    "翻译路由已激活，可以拖入游戏。",
                     self.translator_pid,
                 )
             elif "WARNING:" in line or "failed" in line.casefold() or "error" in line.casefold():

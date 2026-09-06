@@ -1,44 +1,44 @@
 # RenpyThief 非官方翻译补丁
 
-一个面向 RenpyThief 的独立社区启动器：既可以继续使用原版免费额度，也可以把翻译请求路由到用户自己的 AI API 或专业机器翻译平台。
+一个面向 RenpyThief 的独立社区启动器：把翻译请求路由到用户自己的 AI API 或专业机器翻译平台。官方免费额度请直接运行你自己的 RenpyThief，不要用本启动器。
 
 > [!IMPORTANT]
-> 本项目与 RenpyThief 官方没有隶属、授权或合作关系。官方免费额度仍使用你自己的原版程序；「我的 API」使用补丁目录 `6.7.8Origin` 中附带的干净 RenpyThief 6.7.8，启动时复制到本机工作副本，不读写你电脑上已有的原版安装。使用本补丁仍须遵守原软件、游戏和翻译平台的服务条款。
+> 本项目与 RenpyThief 官方没有隶属、授权或合作关系。「我的 API」使用补丁目录 `6.7.8Origin` 中附带的干净 RenpyThief 6.7.8，启动时复制到本机工作副本，不读写你电脑上已有的原版安装。官方免费额度请直接运行你自己的原版程序。使用本补丁仍须遵守原软件、游戏和翻译平台的服务条款。
 
 > [!WARNING]
-> 当前版本只实测了 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。其他版本可能无法启动、无法保护版本检查或无法激活翻译路由。官方免费额度模式仍按原版登录；「我的 API」模式不再依赖官方会话接口，翻译走用户自己的服务。
+> 当前版本只实测了 **RenpyThief 6.7.8（x86 / Qt 5.15.2）**。其他版本可能无法启动、无法保护版本检查或无法激活翻译路由。启动器只提供「我的 API」：不再依赖官方会话接口，翻译走用户自己的服务。
 
 ## 功能概览
 
-- 在“官方免费额度”和“我的 API”之间手动选择，不会静默切换线路或产生意外费用。
+- 启动器只提供「我的 API」，不会静默切换到官方额度或产生意外费用。
 - 自定义线路只有在本地 Bridge、RenpyThief 和进程级路由全部确认后，才会提示拖入游戏。
-- 支持 DeepSeek、SiliconFlow Hunyuan-MT、OpenAI-compatible，以及本机 `127.0.0.1` 上的 OpenAI 兼容本地模型。
+- 支持 DeepSeek、SiliconFlow、OpenAI-compatible，以及本机 `127.0.0.1` 上的 OpenAI 兼容本地模型。
 - 支持有道智云、百度翻译开放平台和 Microsoft Translator 专用接口。
 - AI 翻译提供“简洁直译”“游戏本地化”和自定义提示词。
 - 自定义提示词框默认预填模板 1，并支持 `{source}`、`{target}`、`{text}`。
 - API 凭据可仅在本次运行中使用，也可保存到 Windows 凭据管理器。
 - 默认精确保护 RenpyThief 已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报。关闭前会明确警告。
 - 不修改系统代理、DNS、hosts、证书、防火墙或全局网络设置。
-- 默认日志不记录游戏原文、译文、Authorization、Cookie 或 API Key。
-- **v1.0.4.0 测试**：Ren'Py 脚本层已关闭，用来观察原版会不会改走通用注入器 `RenpyInjector`。正式版 v1.0.3 仍会写 `00unofficial_bridge.rpy`。
+- 默认 Bridge 日志不记录游戏原文、译文、Authorization、Cookie 或 API Key。
+- **v1.1.0**：启动器只走「我的 API」；主进程解出台词后改送到本机 Bridge，再按官方回包格式写回游戏。游戏窗口和原版翻译仪表盘都会显示这次翻译。
 
 ## 下载与安装
 
 > [!IMPORTANT]
-> **当前仓库测试包为 v1.0.4.0。** 正式版仍是 v1.0.3。因内置干净 6.7.8，安装器和便携 ZIP 会明显大于以往版本。
+> **当前正式版为 v1.1.0。** 因内置干净 6.7.8，安装器和便携 ZIP 会明显大于早期版本。
 >
 > **普通用户只需下载下面两个程序包之一，不要下载对应源码附件，也不要点击 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`。** PyQt5、Qt、MinHook、Python 等锁定源码目前托管在 [v0.1.2](https://github.com/KangZENG50025543/RenpyThief-Unofficial-Patch/releases/tag/v0.1.2)，用于履行开源许可证义务，不能直接安装或运行本补丁。
 
 | 下载文件 | 适合谁 | 如何使用 |
 |---|---|---|
-| `RenpyThiefPatch-v1.0.4.0-setup-x64.exe` | 本号测试安装版 | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
-| `RenpyThiefPatch-v1.0.4.0-portable-x64.zip` | 本号测试便携版 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
+| `RenpyThiefPatch-v1.1.0-setup-x64.exe` | 推荐安装版 | 运行安装向导；自动建立开始菜单项，可选择桌面快捷方式，并提供卸载入口 |
+| `RenpyThiefPatch-v1.1.0-portable-x64.zip` | 免安装便携版 | 完整解压后运行 `RenpyThiefPatch.exe`；不要在 ZIP 内直接运行 |
 
-两种版本功能相同，均已包含 GUI、翻译 Bridge、原生组件，以及「我的 API」所用的干净 RenpyThief 6.7.8（`6.7.8Origin`）。不需要另外安装 Python。官方免费额度仍请浏览你自己的原版程序。
+两种版本功能相同，均已包含 GUI、翻译 Bridge、原生组件，以及「我的 API」所用的干净 RenpyThief 6.7.8（`6.7.8Origin`）。不需要另外安装 Python。官方免费额度请直接运行你自己的原版程序。
 
 ### 安装版（推荐）
 
-1. 打开对应的 GitHub Release，下载 `RenpyThiefPatch-v1.0.4.0-setup-x64.exe`（测试包）。
+1. 打开对应的 GitHub Release，下载 `RenpyThiefPatch-v1.1.0-setup-x64.exe`。
 2. 可同时下载 `SHA256SUMS.txt`，按下方命令核对文件完整性。
 3. 关闭游戏、RenpyThief 和旧版补丁，再运行安装器。
 4. 按安装向导完成安装。开始菜单快捷方式会自动创建；“创建桌面快捷方式”默认勾选，可按需取消。
@@ -48,7 +48,7 @@
 
 ### 便携版
 
-1. 下载 `RenpyThiefPatch-v1.0.4.0-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
+1. 下载 `RenpyThiefPatch-v1.1.0-portable-x64.zip` 和可选的 `SHA256SUMS.txt`。
 2. 将 ZIP **完整解压**到当前用户可写的独立目录，例如 `D:\Tools\RenpyThiefPatch`。
 3. 先阅读包内 `QUICK_START.txt`，再运行 `RenpyThiefPatch.exe`；也可以双击 `LaunchPatch.cmd`。
 
@@ -57,8 +57,8 @@
 校验 SHA-256：
 
 ```powershell
-(Get-FileHash .\RenpyThiefPatch-v1.0.4.0-setup-x64.exe -Algorithm SHA256).Hash
-(Get-FileHash .\RenpyThiefPatch-v1.0.4.0-portable-x64.zip -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.1.0-setup-x64.exe -Algorithm SHA256).Hash
+(Get-FileHash .\RenpyThiefPatch-v1.1.0-portable-x64.zip -Algorithm SHA256).Hash
 ```
 
 将输出与同一 Release 中 `SHA256SUMS.txt` 对应文件名的值比较；不一致时不要运行或安装。
@@ -67,22 +67,20 @@
 
 - 64 位 Windows；补丁内同时包含面向 32 位 RenpyThief 的原生组件。
 - 「我的 API」使用补丁内置的干净 RenpyThief 6.7.8，不依赖你电脑上是否已经装过原版。
-- 使用「官方免费额度」时，请浏览你自己的 `RenpyThief.exe`，并按原版要求完成登录。
-- 使用「我的 API」时，兼容性保护会在进程内应答官方会话接口；需要对应平台的有效凭据，本机 OpenAI 兼容服务可将 API Key 留空。
+- 兼容性保护会在进程内应答官方会话接口；需要对应平台的有效凭据，本机 OpenAI 兼容服务可将 API Key 留空。
+- 官方免费额度请直接运行你自己的 `RenpyThief.exe`，不要用本启动器。
 - 本地端口 `127.0.0.1:19899` 未被其他程序占用。
 - 「我的 API」会把内置 6.7.8 复制到 `%LOCALAPPDATA%\RenpyThiefUnofficialPatch\6.7.8Runtime` 再启动，从而保持 `6.7.8Origin` 不被写入。
 
 ## 快速开始
 
-1. 从安装版快捷方式启动补丁；便携版则运行解压目录中的 `RenpyThiefPatch.exe`。
-2. 选择翻译来源：
-   - 官方免费额度：在顶部路径栏点击“浏览…”，选择你自己的 **RenpyThief 6.7.8 x86**。
-   - 我的 API：路径会自动锁定为补丁内置的干净 6.7.8，无需再选你电脑上的原版。
-3. 建议保持“启用兼容性保护（推荐）”开启。它会保护已知版本检查；在「我的 API」下还会本地应答登录/心跳/注入上报。
-4. 使用“我的 API”时，选择 Provider，填写该平台的凭据；不熟悉模型和高级设置时请保留默认值。
-5. 建议先点击“测试 API”。测试只会向所选平台发送固定文本 `こんにちは`，不会发送游戏内容。测试通过只代表凭据和当前端点可用，不代表原版登录或游戏注入已经完成。
-6. 点击“启动原版翻译器”或“使用我的 API 启动”。官方额度模式如出现原版登录页，请按原版要求完成登录。
-7. **必须等待补丁状态明确显示“已就绪，可以拖入游戏”。** 自定义 API 模式还需要 Bridge、注入组件和动态路由全部确认，因此可能比原版窗口出现稍晚。
+1. 从安装版快捷方式启动补丁；便携版则运行解压目录中的 `RenpyThiefPatch.exe`。源码调试可运行 `python run_patch.py`。
+2. 路径会自动锁定为补丁内置的干净 6.7.8，无需再选你电脑上的原版。
+3. 建议保持“启用兼容性保护（推荐）”开启。它会保护已知版本检查，并本地应答登录/心跳/注入上报。
+4. 选择 Provider，填写该平台的凭据；不熟悉模型和高级设置时请保留默认值。
+5. 建议先点击“测试 API”。测试只会向所选平台发送固定文本 `こんにちは`，不会发送游戏内容。测试通过只代表凭据和当前端点可用，不代表游戏注入已经完成。
+6. 点击“使用我的 API 启动”。
+7. **必须等待补丁状态明确显示“已就绪，可以拖入游戏”。** Bridge 和路由确认可能比原版窗口出现稍晚。
 8. 此时再把游戏拖入 RenpyThief，后续游戏识别、启动和注入仍由原版流程执行。Ren'Py 游戏若弹出「请选择翻译样式」，请选 **「使用内嵌样式」**。
 
 切换线路前，请先关闭游戏并正常关闭 RenpyThief，再从补丁中重新启动。当前版本不支持运行中热切换。
@@ -91,7 +89,7 @@
 
 API Key 必须从对应平台的官方控制台自行申请。本项目不提供共享密钥、免费额度或平台账号，也不会自动判断平台计费；发送真实游戏文本前请先确认价格、限额、地域可用性和隐私政策。
 
-1. 选择“我的 API”，再选择 Provider。
+1. 选择 Provider。
 2. 按界面填写凭据。DeepSeek、SiliconFlow 和 OpenAI-compatible 使用 API Key；有道使用应用 ID 与应用密钥；百度使用 APP ID 与密钥；Microsoft 使用订阅密钥，并按 Azure 资源配置决定是否填写 Region。
 3. AI Provider 可选择质量/提示词模式。第一次使用建议保留默认模型和“模板 1”；专用翻译平台不使用 AI 提示词。
 4. 只有在信任当前 Windows 账户和设备时，才勾选“使用 Windows 凭据管理器安全保存”。未勾选时，凭据仅用于本次运行，并会删除该 Provider 以前保存的凭据。
@@ -99,24 +97,20 @@ API Key 必须从对应平台的官方控制台自行申请。本项目不提供
 
 `OpenAI-compatible` 和 `本地模型（OpenAI 兼容）` 面向自定义或本机服务：Base URL 应填写 API 根地址，例如 `https://example.com/v1` 或 `http://127.0.0.1:11434/v1`，不要重复附加 `/chat/completions`，也不要把 API Key 写进 URL。非本机地址必须使用 HTTPS；本机 `127.0.0.1` / `localhost` 允许 HTTP，且 API Key 可留空。
 
-## 两种翻译来源
+## 翻译来源
 
-| 模式 | 翻译由谁提供 | 用户凭据 | 自定义翻译路由 |
-|---|---|---|---|
-| 官方免费额度 | RenpyThief 原版服务 | 不读取 | 不启用 |
-| 我的 API | 用户选择的第三方平台 | 需要 | 启用本地 Bridge 与进程级路由 |
+启动器只走「我的 API」：翻译由用户选择的第三方平台提供，启用本地 Bridge 与主进程解袋回写。官方免费额度请直接运行你自己的 RenpyThief。
 
-更新保护是独立选项。即使使用官方额度，开启兼容性保护时仍会加载版本检查保护，但不会启用自定义翻译路由，也不会改写官方登录。
-「我的 API」在兼容性保护开启时，会在同一套 Qt 网络钩子里本地应答会话接口并拒绝官方游戏配置下载；翻译仍只走用户选择的 Bridge。
+兼容性保护开启时，会在同一套 Qt 网络钩子里本地应答会话接口并拒绝官方游戏配置下载；翻译仍只走用户选择的 Bridge。
 
-补丁不会自动检测官方额度是否耗尽，也不会在官方线路失败时自动切换到用户 API。
+补丁不会在官方线路失败时自动切换，因为启动器不再启动官方额度模式。
 
 ## 支持的翻译平台
 
 | Provider | 所需凭据 | 默认设置与说明 |
 |---|---|---|
 | DeepSeek | API Key | `deepseek-v4-flash`；极速模式关闭思考，高质量模式启用高强度思考 |
-| SiliconFlow · Hunyuan-MT | API Key | `tencent/Hunyuan-MT-7B`；实验性的专用翻译模型 |
+| SiliconFlow | API Key | 默认 `tencent/Hunyuan-MT-7B`，可改成该平台上的其他模型 |
 | OpenAI-compatible | API Key（本机可留空）、Base URL、模型名 | 服务必须兼容 `/chat/completions`；本机可用 `http://127.0.0.1:端口/v1` |
 | 本地模型（OpenAI 兼容） | 模型名；API Key 可留空 | 默认 `http://127.0.0.1:11434/v1`；把端口和模型名改成你本机实际加载的服务 |
 | 有道智云 | 应用 ID、应用密钥 | 请求在本机按有道规则签名 |
@@ -151,7 +145,7 @@ AI Provider 支持两种内置模板，以及三个可分别保存的自定义�
 
 - 修改或替换 `RenpyThief.exe`。
 - 屏蔽所有官方网络请求。
-- 在「官方免费额度」下改写登录、注册、额度或翻译授权。
+- 改写官方登录、注册、额度或翻译授权。启动器不再提供官方额度模式；要用官方额度请直接运行你自己的 RenpyThief。
 - 保证任意未来版本都自动兼容。
 - 修改系统代理、hosts、防火墙或证书。
 
@@ -179,12 +173,12 @@ AI Provider 支持两种内置模板，以及三个可分别保存的自定义�
 
 网络边界：
 
-- 官方额度模式仍由 RenpyThief 与其官方服务通信。
-- “我的 API”模式会把待翻译文本发送给用户选择的翻译平台。
+- 启动器只走“我的 API”，会把待翻译文本发送给用户选择的翻译平台。
+- 官方额度请直接运行你自己的 RenpyThief；本启动器不会替你连官方翻译服务。
 - RenpyThief 仍可能访问登录、配置和其他原版接口；本补丁不是完全离线替代品。
 - 补丁不会把一个 Provider 的密钥发送给另一个 Provider。
 
-默认日志只记录运行阶段、耗时、字符数量和不可逆文本指纹，不记录正文或响应错误体。成功译文会在 Bridge 进程内存中进行有上限的会话缓存；进程退出后缓存消失，不持久化到磁盘。
+默认 Bridge 日志只记录运行阶段、耗时、字符数量和不可逆文本指纹，不记录正文或响应错误体。成功译文会在 Bridge 进程内存中进行有上限的会话缓存；进程退出后缓存消失，不持久化到磁盘。versionguard 诊断日志可能包含短台词片段，不含 API Key。
 
 “本地不记录正文”不代表翻译平台看不到正文。请根据所选平台的隐私政策决定是否发送敏感内容。
 
@@ -211,13 +205,11 @@ AI Provider 支持两种内置模板，以及三个可分别保存的自定义�
 
 ### 提示“请选择有效的 RenpyThief.exe”怎么办？
 
-点击“浏览…”，选择原版主程序本身，而不是快捷方式、更新器、补丁程序或游戏 EXE。该选择只用于「官方免费额度」。「我的 API」会自动使用内置的 `6.7.8Origin\RenpyThief.exe`。
+启动器不再浏览你电脑上的原版。请确认补丁目录下存在 `6.7.8Origin\RenpyThief.exe`。缺少该文件通常表示安装/解压不完整。
 
 ### 为什么仍然出现登录页面？
 
-官方免费额度模式会保留原版登录。未完成原版登录时，RenpyThief 仍可能拒绝拖入游戏。
-
-「我的 API」且兼容性保护开启时，补丁会本地应答已知会话接口，并在内置 6.7.8 的工作副本缺少登录记录时写入本机会话标记，不覆盖已有记录，也不改你自己的原版目录。这不是官方账号，也不能用来领取官方额度。若仍弹出登录页，请确认选的是「我的 API」且兼容性保护已开启。
+兼容性保护开启时，补丁会本地应答已知会话接口，并在内置 6.7.8 的工作副本缺少登录记录时写入本机会话标记，不覆盖已有记录，也不改你自己的原版目录。这不是官方账号，也不能用来领取官方额度。若仍弹出登录页，请确认兼容性保护已开启。
 
 ### 为什么一定要等待“已就绪，可以拖入游戏”？
 
@@ -239,7 +231,7 @@ AI Provider 支持两种内置模板，以及三个可分别保存的自定义�
 
 ### 可以先用免费额度，再切换到自己的 API 吗？
 
-可以，但不能热切换。请先关闭游戏和 RenpyThief，然后选择另一模式重新启动。
+可以，但不能热切换，也不能用本启动器开官方额度。请先关闭游戏和 RenpyThief；官方额度直接运行你自己的 `RenpyThief.exe`，自己的 API 再从本启动器启动。
 
 ### 更新保护开启后，未来版本一定能用吗？
 
@@ -261,7 +253,7 @@ GUI 启动流程不会把凭据写入设置文件、日志或命令行。凭据�
 
 ### 如何收集故障信息？
 
-在 GUI 中点击“打开诊断目录”，记录补丁版本、安装版/便携版、Windows 版本、RenpyThief 版本、翻译线路、Provider 和失败阶段。日志默认不记录游戏正文，但提交前仍须人工检查。不要上传 API Key、Cookie、账号、完整游戏文本、原版程序、游戏文件、`user`、`hwid` 或未经检查的整份目录。
+在 GUI 中点击“打开诊断目录”，记录补丁版本、安装版/便携版、Windows 版本、RenpyThief 版本、翻译线路、Provider 和失败阶段。提交前请人工检查，避免贴出完整台词或密钥。
 
 ### 如何卸载或重置？
 
@@ -270,9 +262,9 @@ GUI 启动流程不会把凭据写入设置文件、日志或命令行。凭据�
 ## 已知限制
 
 - 目前仅实测 RenpyThief 6.7.8 x86。
-- 官方免费额度仍依赖原版登录、引擎识别、游戏资源部署和注入流程。
+- 引擎识别、游戏资源部署和注入流程仍由内置 6.7.8 执行。
 - 不支持运行中切换线路。
-- 不自动检测官方额度耗尽。
+- 不自动检测官方额度耗尽；官方额度也不由本启动器提供。
 - 不自动回退到其他 Provider。
 - OpenAI-compatible 属于高级实验性功能。
 - 翻译质量主要由所选模型或平台决定。
@@ -301,7 +293,7 @@ python .\run_patch.py
 
 ```powershell
 $env:QT_QPA_PLATFORM = 'offscreen'
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 ## 构建发布包
@@ -312,25 +304,25 @@ python -m unittest discover -s tests -v
 $buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.2'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 1.0.4.0 -Python "$buildVenv\Scripts\python.exe"
+.\build_release.ps1 -Version 1.1.0 -Python "$buildVenv\Scripts\python.exe"
 ```
 
 不加 `-PublicRelease` 时，脚本只生成便携目录、便携 ZIP 和仅含便携 ZIP 的校验文件：
 
 ```text
-release\RenpyThiefPatch-v1.0.4.0-portable-x64\
-release\RenpyThiefPatch-v1.0.4.0-portable-x64.zip
+release\RenpyThiefPatch-v1.1.0-portable-x64\
+release\RenpyThiefPatch-v1.1.0-portable-x64.zip
 release\SHA256SUMS.txt
 ```
 
 正式公开发布时应使用 `-PublicRelease`；它会继续调用 Inno Setup 6.7.3 生成安装器，并让 `SHA256SUMS.txt` 同时覆盖安装器和便携 ZIP。如果缺少许可证文件、安装器定义或编译器，脚本会拒绝生成公开发布资产：
 
 ```powershell
-.\build_release.ps1 -Version 1.0.4.0 -Python "$buildVenv\Scripts\python.exe" `
+.\build_release.ps1 -Version 1.1.0 -Python "$buildVenv\Scripts\python.exe" `
   -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
 ```
 
-正式构建最终应再包含 `release\RenpyThiefPatch-v1.0.4.0-setup-x64.exe`。
+正式构建最终应再包含 `release\RenpyThiefPatch-v1.1.0-setup-x64.exe`。
 
 建议在干净虚拟环境中构建，并记录最终依赖版本。`build\`、`dist\`、`release\` 和原生二进制不应提交进 Git 历史。
 
@@ -363,11 +355,11 @@ Issue 中请尽量提供：
 - 失败发生在哪个阶段。
 - “打开诊断目录”中经过人工检查、确认不含隐私的相关日志。
 
-请勿上传 API Key、Cookie、账号信息、完整游戏文本、`user`、`hwid`、原版程序或未经检查的整份日志。
+提交 Issue 时建议不要直接粘贴 API Key。
 
 ## 许可证与声明
 
-除另有说明的第三方组件外，本项目源码采用 [GNU General Public License v3.0 only](LICENSE)，SPDX 标识为 `GPL-3.0-only`。
+除另有说明的第三方组件外，本补丁源码采用 [GNU General Public License v3.0 only](LICENSE)，SPDX 标识为 `GPL-3.0-only`。安装包中的 `6.7.8Origin` 是 RenpyThief 原版程序，不属于本项目开源范围，权利归其权利人；Git 仓库和 GitHub 自动生成的 Source code 归档不包含该原版程序。
 
 你可以自由运行、研究、修改和再分发本项目。若向他人分发本项目或修改版的二进制文件，必须按 GPL v3 同时提供相应源码、保留许可证与版权声明，并允许接收者继续按相同权利使用和再分发。
 

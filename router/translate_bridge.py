@@ -6,7 +6,7 @@ CustomTranslate calls:
 and expects the translated text as the entire response body.
 
 Modes:
-  echo    - routing proof; returns the source text unchanged
+  echo    - routing proof; returns echo:【source】 so writeback is visible
   openai  - forwards to an OpenAI-compatible /chat/completions endpoint
   youdao  - forwards to Youdao Cloud Text Translation
   baidu   - forwards to Baidu General Text Translation
@@ -728,7 +728,7 @@ class Translator:
 
     def translate(self, text: str, source: str, target: str) -> str:
         if self.mode == "echo":
-            return text
+            return format_echo_result(text)
         if self.mode == "openai":
             if self.payload_profile == "hunyuan-mt":
                 return self._translate_hunyuan(text, source, target)
@@ -909,6 +909,10 @@ def format_official_keys(keys: tuple[str, ...]) -> str:
     return "|" + "|".join(safe) + "|" if safe else "|"
 
 
+def format_echo_result(text: str) -> str:
+    return f"echo:【{text}】"
+
+
 def official_success_envelope(text: str, type_value: int) -> dict:
     return {
         "status": 200,
@@ -1084,8 +1088,10 @@ def extract_official_translate_request(
         if type_value == 0:
             type_value = _parse_type_value(mapping)
 
-    if encrypted:
-        text = ""
+    query_text = _first_mapping_string(query, _OFFICIAL_TEXT_KEYS)
+    if query_text:
+        text = query_text
+
     unique_keys = tuple(dict.fromkeys(keys))
     return OfficialTranslateRequest(
         text=text,
@@ -1147,7 +1153,7 @@ def make_handler(
             parsed = urllib.parse.urlsplit(self.path)
             try:
                 query = urllib.parse.parse_qs(
-                    parsed.query, keep_blank_values=True, max_num_fields=16
+                    parsed.query, keep_blank_values=True, max_num_fields=64
                 )
             except ValueError:
                 self.send_json(
@@ -1166,7 +1172,7 @@ def make_handler(
                     f"blob={classify_blob(fields.data_preview or fields.text)} "
                     f"preview={fields.data_preview or preview_text(fields.text)}"
                 )
-            if fields.encrypted:
+            if fields.encrypted and not fields.text:
                 append_log(
                     f"OFFICIAL encrypted_skip endpoint={endpoint} keys={key_list} "
                     f"data_chars={fields.data_chars} "
@@ -1217,7 +1223,8 @@ def make_handler(
                     f"OFFICIAL OK endpoint={endpoint} mode={translator.mode} "
                     f"from={fields.source} to={fields.target} "
                     f"chars={len(fields.text)} result_chars={len(translated)} "
-                    f"ms={elapsed:.1f} text_sha256={text_hash} keys={key_list}"
+                    f"ms={elapsed:.1f} text_sha256={text_hash} keys={key_list} "
+                    f"text={fields.text} result={translated}"
                 )
                 if tap_content:
                     append_log(
@@ -1238,7 +1245,8 @@ def make_handler(
                     f"OFFICIAL ERROR endpoint={endpoint} mode={translator.mode} "
                     f"chars={len(fields.text)} ms={elapsed:.1f} "
                     f"type=HTTPError upstream_status={status} "
-                    f"text_sha256={text_hash} keys={key_list}"
+                    f"text_sha256={text_hash} keys={key_list} "
+                    f"text={fields.text}"
                 )
                 self.send_json(
                     HTTPStatus.BAD_GATEWAY, official_error_envelope(500)
@@ -1258,7 +1266,7 @@ def make_handler(
                     f"OFFICIAL ERROR endpoint={endpoint} mode={translator.mode} "
                     f"chars={len(fields.text)} ms={elapsed:.1f} "
                     f"type={type(error).__name__} text_sha256={text_hash} "
-                    f"keys={key_list}"
+                    f"keys={key_list} text={fields.text}"
                 )
                 self.send_json(
                     HTTPStatus.BAD_GATEWAY, official_error_envelope(500)
@@ -1322,11 +1330,14 @@ def make_handler(
                 elapsed = (time.perf_counter() - started) * 1000
                 status = error.code if isinstance(error.code, int) else "unknown"
                 error.close()
-                append_log(
+                error_event = (
                     f"ERROR mode={translator.mode} chars={len(text)} ms={elapsed:.1f} "
                     f"type=HTTPError upstream_status={status} "
                     f"text_sha256={text_hash}"
                 )
+                if log_content:
+                    error_event += f" text={text}"
+                append_log(error_event)
                 # Never forward or log an upstream error body: providers can
                 # include request details in it. The numeric status is enough to
                 # distinguish authentication, rate-limit, and server failures.
@@ -1342,10 +1353,13 @@ def make_handler(
                 urllib.error.URLError,
             ) as error:
                 elapsed = (time.perf_counter() - started) * 1000
-                append_log(
+                error_event = (
                     f"ERROR mode={translator.mode} chars={len(text)} ms={elapsed:.1f} "
                     f"type={type(error).__name__} text_sha256={text_hash}"
                 )
+                if log_content:
+                    error_event += f" text={text}"
+                append_log(error_event)
                 self.send_text(HTTPStatus.BAD_GATEWAY, "translation failed")
 
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API

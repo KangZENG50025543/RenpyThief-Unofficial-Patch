@@ -65,7 +65,7 @@ def _normalized_prompt(value: Any) -> str:
 class AppSettings:
     schema_version: int = SETTINGS_SCHEMA_VERSION
     translator_path: str = ""
-    mode: str = TranslationMode.OFFICIAL.value
+    mode: str = TranslationMode.CUSTOM.value
     provider: str = ProviderId.DEEPSEEK.value
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-flash"
@@ -104,8 +104,8 @@ class AppSettings:
         # Missing fields retain their safe defaults and the next save writes the
         # current schema version.
         self.schema_version = SETTINGS_SCHEMA_VERSION
-        if self.mode not in {item.value for item in TranslationMode}:
-            self.mode = TranslationMode.OFFICIAL.value
+        if self.mode != TranslationMode.CUSTOM.value:
+            self.mode = TranslationMode.CUSTOM.value
         if self.provider not in {item.value for item in ProviderId}:
             self.provider = ProviderId.DEEPSEEK.value
         if self.quality not in {item.value for item in QualityMode}:

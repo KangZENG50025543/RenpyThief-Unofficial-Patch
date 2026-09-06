@@ -16,7 +16,7 @@ Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $installerScript = Join-Path $projectRoot 'packaging\installer.iss'
-$expectedFileName = 'RenpyThiefPatch-v1.0.4.0-setup-x64.exe'
+$expectedFileName = 'RenpyThiefPatch-v1.1.0-setup-x64.exe'
 
 function Resolve-ExistingFile {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -73,6 +73,7 @@ function Assert-RequiredInputs {
         'SOURCE_AVAILABILITY.md',
         'THIRD_PARTY_SOURCE_MANIFEST.txt',
         'router\translate_bridge.exe',
+        'router\translate_bridge.py',
         'router\start_routed_translator.ps1',
         'router\ipcroute.dll',
         'router\netinject.exe',

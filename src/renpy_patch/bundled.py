@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from .models import AppSettings, TranslationMode
+from .models import AppSettings
 from .settings import app_data_directory, application_directory
 
 ORIGIN_DIR_NAME = "6.7.8Origin"
@@ -116,9 +116,8 @@ def resolve_launch_translator(
     origin_dir: Path | None = None,
     runtime_dir: Path | None = None,
 ) -> Path:
-    if settings.mode == TranslationMode.CUSTOM.value:
-        return prepare_bundled_runtime(origin_dir, runtime_dir)
-    translator = Path(settings.translator_path).expanduser()
-    if not translator.is_file() or translator.name.casefold() != "renpythief.exe":
-        raise ValueError("请选择有效的 RenpyThief.exe。")
-    return translator.resolve()
+    # The launcher no longer starts official-quota mode. Always clone the
+    # bundled 6.7.8 origin into the writable runtime, even if an older
+    # settings.json still says mode=official.
+    settings.normalize()
+    return prepare_bundled_runtime(origin_dir, runtime_dir)

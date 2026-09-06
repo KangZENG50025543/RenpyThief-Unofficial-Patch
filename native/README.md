@@ -37,7 +37,7 @@
 .\native\build\x86\injectroute_test.exe
 ```
 
-`versionguard.ini` 默认 `session_compat=observe`、`config_compat=pass`、`translate_compat=pass`，供官方额度模式只保护版本检查。「我的 API」启动器会写入隔离副本：`session_compat=lock`、`config_compat=deny`、`translate_compat=lock`。此时 `guardlaunch` 会在原版 `user` 文件缺失或为空时写入本机会话标记，不会覆盖已有登录记录；明文翻译由 `ipcroute` 在动态三连端口劫持；请求不必是 `GET /?from&to&text`，路径和 POST form/JSON 也能抽出台词。通用注入器 `RenpyInjector-x86.exe` 还会被注入 `injectroute.dll`：它钩的是注入器自己的 `QNetworkAccessManager::post`，把本机 JSON 明文改到 Bridge，`encrypted=true` 或 embed `msg`/`sign` 原样放过。内嵌 `POST /path?type=pt` 只回原密文包，不送给用户 API。Ren'Py 游戏需带上 `router/00unofficial_bridge.rpy`，在脚本明文层走 Bridge。测试阶段 `ipcroute.log` 会记下方法、路径和能解出的台词正文。加密的官方 `sendTranslate` 包会被丢掉而不是拿去翻译。不要同时加载第二套 Qt NAM 钩子。
+`versionguard.ini` 仓库默认是 `session_compat=observe`、`config_compat=pass`、`translate_compat=pass`，只保护版本检查。启动器不再提供官方额度模式，启动时会写入隔离副本：`session_compat=lock`、`config_compat=deny`、`translate_compat=lock`。此时 `guardlaunch` 会在原版 `user` 文件缺失或为空时写入本机会话标记，不会覆盖已有登录记录。`v1.1.0` 默认不注入 `ipcroute` / `injectroute`：第一跳密文回到主进程解袋，versionguard 抽出桌上的 `text` + `translateType`，改送到本机 Bridge，再按官方信封回写译文。Ren'Py 脚本层 `00unofficial_bridge.rpy` 在本号仍然关闭。`versionguard.log` 仍可能记下短台词片段（去程 `hub_plaintext`，回程 `hub_inbound`），不含密钥。
 
 `guardlaunch` 启动 32 位 `RenpyThief.exe` 时会丢掉父进程的 `QT_*` / `QML*` 环境变量。64 位补丁 GUI（PyQt5 / PyInstaller）会设置自己的插件目录；若这些变量漏进原版进程，Qt 会找不到可用的 `windows` 平台插件，三连端口也就不会出现。
 

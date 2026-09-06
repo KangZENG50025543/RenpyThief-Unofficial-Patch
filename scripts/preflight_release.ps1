@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.4.0',
+    [string]$Version = '1.1.0',
 
     [string]$Python = 'python.exe',
 
@@ -209,6 +209,7 @@ try {
         $localizedLauncherName,
         'QUICK_START.txt',
         'router\translate_bridge.exe',
+        'router\translate_bridge.py',
         'router\ipcroute.dll',
         'router\injectroute.dll',
         'router\netinject.exe',

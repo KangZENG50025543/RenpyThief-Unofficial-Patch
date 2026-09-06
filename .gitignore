@@ -36,6 +36,7 @@ api_*.txt
 secret*.txt
 credentials*.json
 settings.json
+settings.ini
 *.pem
 *.key
 

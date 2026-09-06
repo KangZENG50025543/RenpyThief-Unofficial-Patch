@@ -107,6 +107,29 @@ int wmain()
         std::fprintf(stderr, "FAIL official menu translate rewrite\n");
         return 1;
     }
+    const std::string hubUrl = AppendOfficialTranslateHubQuery(
+        "http://127.0.0.1:19899/official-translate/sendTranslate",
+        "auto", "zh", "%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%81%AF");
+    if (hubUrl !=
+        "http://127.0.0.1:19899/official-translate/sendTranslate"
+        "?from=auto&to=zh&text=%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%81%AF") {
+        std::fprintf(stderr, "FAIL hub plaintext query url=%s\n",
+                     hubUrl.c_str());
+        return 1;
+    }
+    const std::string inbound =
+        "{\"status\":200,\"msg\":\"OK\",\"data\":{\"text\":\"hub-plain\","
+        "\"isChatGPT\":false,\"remainCharCount\":1}}";
+    const std::string session =
+        "{\"status\":200,\"msg\":\"OK\",\"data\":{\"username\":\"local\","
+        "\"remainCharCount\":1}}";
+    const std::string denied = "{\"status\":400,\"msg\":\"local\",\"data\":{}}";
+    if (!LooksLikeOfficialTranslateReply(inbound) ||
+        LooksLikeOfficialTranslateReply(session) ||
+        LooksLikeOfficialTranslateReply(denied)) {
+        std::fprintf(stderr, "FAIL inbound translate reply classifier\n");
+        return 1;
+    }
     std::printf("PASS: normalized version endpoint matching is narrow.\n");
     return 0;
 }

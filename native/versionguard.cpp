@@ -63,6 +63,13 @@ TranslateCompat g_translateCompat = TranslateCompat::Pass;
 NetworkGetFn g_networkGet = nullptr;
 CreateRequestFn g_createRequest = nullptr;
 FromJsonFn g_fromJson = nullptr;
+using ToJsonFormatFn = void* (__thiscall*)(const void*, void*, int);
+using ToJsonDefaultFn = void* (__thiscall*)(const void*, void*);
+ToJsonFormatFn g_toJsonFormat = nullptr;
+ToJsonDefaultFn g_toJsonDefault = nullptr;
+CRITICAL_SECTION g_hubLock;
+bool g_hubLockReady = false;
+std::string g_hubText;
 std::atomic<long> g_ready{0};
 std::atomic<unsigned long> g_blockedChecks{0};
 std::atomic<unsigned long> g_getMatches{0};
@@ -435,6 +442,33 @@ std::string PercentEncode(const std::string& value)
     return out;
 }
 
+std::string FlattenForLog(const std::string& value)
+{
+    std::string out = value;
+    for (char& c : out) {
+        if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+    }
+    return out;
+}
+
+void RememberHubText(std::string text)
+{
+    if (!g_hubLockReady) return;
+    EnterCriticalSection(&g_hubLock);
+    g_hubText.swap(text);
+    LeaveCriticalSection(&g_hubLock);
+}
+
+std::string CurrentHubText()
+{
+    std::string copy;
+    if (!g_hubLockReady) return copy;
+    EnterCriticalSection(&g_hubLock);
+    copy = g_hubText;
+    LeaveCriticalSection(&g_hubLock);
+    return copy;
+}
+
 std::string SessionJson(const std::string& endpoint)
 {
     if (endpoint == "pingTest" || endpoint == "submitInject" ||
@@ -514,8 +548,24 @@ QNetworkReply* HandleTranslateRequest(
     QIODevice* outgoingData, const OfficialEndpointMatch& official)
 {
     const std::string encodedOfficial = EncodedUrl(request);
-    const std::string local =
-        OfficialTranslateBridgeUrl(official.endpoint, encodedOfficial);
+    const std::string hub = CurrentHubText();
+    std::string local = OfficialTranslateBridgeUrl(official.endpoint,
+                                                  encodedOfficial);
+    if (!hub.empty()) {
+        // Drop official query when the hub still has plaintext. The official
+        // bag may already be encrypted; the Bridge only needs text/from/to.
+        local = AppendOfficialTranslateHubQuery(
+            std::string("http://127.0.0.1:19899/official-translate/") +
+                official.endpoint,
+            "auto", "zh", PercentEncode(hub));
+        Log("hub_reroute endpoint=" + official.endpoint +
+            " chars=" + std::to_string(hub.size()) +
+            " url_bytes=" + std::to_string(local.size()) +
+            " text=" + FlattenForLog(hub));
+    } else {
+        Log("hub_reroute endpoint=" + official.endpoint +
+            " chars=0 reason=no_plaintext");
+    }
     const QByteArray encoded(local.data(), static_cast<int>(local.size()));
     QNetworkRequest replacement(request);
     replacement.setUrl(QUrl::fromEncoded(encoded, QUrl::StrictMode));
@@ -667,6 +717,128 @@ std::string ExtractJsonString(const std::string& json, const char* key)
     return {};
 }
 
+int HexNibble(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+void AppendUtf8CodePoint(std::string& out, unsigned code)
+{
+    if (code <= 0x7F) {
+        out.push_back(static_cast<char>(code));
+    } else if (code <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (code >> 6)));
+        out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xE0 | (code >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+    }
+}
+
+std::string UnescapeJsonString(const std::string& raw)
+{
+    std::string out;
+    out.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] != '\\' || i + 1 >= raw.size()) {
+            out.push_back(raw[i]);
+            continue;
+        }
+        const char next = raw[++i];
+        switch (next) {
+        case '"':
+        case '\\':
+        case '/':
+            out.push_back(next);
+            break;
+        case 'b':
+            out.push_back('\b');
+            break;
+        case 'f':
+            out.push_back('\f');
+            break;
+        case 'n':
+            out.push_back('\n');
+            break;
+        case 'r':
+            out.push_back('\r');
+            break;
+        case 't':
+            out.push_back('\t');
+            break;
+        case 'u':
+            if (i + 4 < raw.size()) {
+                const int h0 = HexNibble(raw[i + 1]);
+                const int h1 = HexNibble(raw[i + 2]);
+                const int h2 = HexNibble(raw[i + 3]);
+                const int h3 = HexNibble(raw[i + 4]);
+                if (h0 >= 0 && h1 >= 0 && h2 >= 0 && h3 >= 0) {
+                    AppendUtf8CodePoint(
+                        out, static_cast<unsigned>((h0 << 12) | (h1 << 8) |
+                                                   (h2 << 4) | h3));
+                    i += 4;
+                    break;
+                }
+            }
+            out.push_back('u');
+            break;
+        default:
+            out.push_back(next);
+            break;
+        }
+    }
+    return out;
+}
+
+void ObserveHubJson(const void* byteArray)
+{
+    const char* data = nullptr;
+    int size = 0;
+    if (!ReadQByteArray(byteArray, data, size) || !data || size <= 0) return;
+    const std::string json(data, static_cast<size_t>(size));
+    if (json.find("\"translateType\"") == std::string::npos ||
+        json.find("\"text\"") == std::string::npos) {
+        return;
+    }
+    const std::string text = UnescapeJsonString(ExtractJsonString(json, "text"));
+    if (text.empty()) return;
+    RememberHubText(text);
+    Log("hub_plaintext chars=" + std::to_string(text.size()) +
+        " text=" + FlattenForLog(text));
+}
+
+void ObserveInboundReply(const std::string& json)
+{
+    if (!LooksLikeOfficialTranslateReply(json)) return;
+    const std::string text = UnescapeJsonString(ExtractJsonString(json, "text"));
+    if (text.empty()) {
+        Log("hub_inbound chars=0 reason=empty_text bytes=" +
+            std::to_string(json.size()));
+        return;
+    }
+    Log("hub_inbound chars=" + std::to_string(text.size()) +
+        " text=" + FlattenForLog(text));
+}
+
+void* __fastcall HookToJsonFormat(const void* self, void*, void* result,
+                                  int format)
+{
+    void* ret = g_toJsonFormat ? g_toJsonFormat(self, result, format) : result;
+    ObserveHubJson(result);
+    return ret;
+}
+
+void* __fastcall HookToJsonDefault(const void* self, void*, void* result)
+{
+    void* ret = g_toJsonDefault ? g_toJsonDefault(self, result) : result;
+    ObserveHubJson(result);
+    return ret;
+}
+
 void* __cdecl HookFromJson(void* resultObject, const void* jsonObject,
                            void* parseError)
 {
@@ -674,6 +846,7 @@ void* __cdecl HookFromJson(void* resultObject, const void* jsonObject,
     int size = 0;
     if (ReadQByteArray(jsonObject, data, size) && data && size > 0) {
         const std::string json(data, static_cast<size_t>(size));
+        ObserveInboundReply(json);
         if (json.find("\"versionNum\"") != std::string::npos &&
             json.find("\"versionInfo\"") != std::string::npos &&
             json.find("\"downloadUrl\"") != std::string::npos) {
@@ -765,10 +938,34 @@ DWORD WINAPI Start(void*)
         return 1;
     }
 
+    void* toJsonFormatTarget = GetProcAddress(
+        core,
+        "?toJson@QJsonDocument@@QBE?AVQByteArray@@W4JsonFormat@1@@Z");
+    void* toJsonDefaultTarget = GetProcAddress(
+        core, "?toJson@QJsonDocument@@QBE?AVQByteArray@@XZ");
+    const MH_STATUS toJsonFormatCreated = toJsonFormatTarget
+        ? MH_CreateHook(toJsonFormatTarget,
+                        reinterpret_cast<void*>(&HookToJsonFormat),
+                        reinterpret_cast<void**>(&g_toJsonFormat))
+        : MH_ERROR_NOT_EXECUTABLE;
+    const MH_STATUS toJsonDefaultCreated = toJsonDefaultTarget
+        ? MH_CreateHook(toJsonDefaultTarget,
+                        reinterpret_cast<void*>(&HookToJsonDefault),
+                        reinterpret_cast<void**>(&g_toJsonDefault))
+        : MH_ERROR_NOT_EXECUTABLE;
+    const bool hubObserver =
+        toJsonFormatCreated == MH_OK || toJsonDefaultCreated == MH_OK;
+    if (!hubObserver) {
+        Log("hub observer unavailable format_status=" +
+            std::to_string(toJsonFormatCreated) +
+            " default_status=" + std::to_string(toJsonDefaultCreated));
+    }
+
     const MH_STATUS enabled = MH_EnableHook(MH_ALL_HOOKS);
     Log("state=hook_ready hook_enable_status=" + std::to_string(enabled) +
         " blocked_count=0 get_hook=true create_request_hook=true "
-        "json_observer=true");
+        "json_observer=true hub_observer=" +
+        std::string(hubObserver ? "true" : "false"));
     g_ready.store(enabled == MH_OK ? 1 : -1);
     SignalHookResult(enabled == MH_OK);
     return enabled == MH_OK ? 0 : 1;
@@ -812,7 +1009,9 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
             g_dir = L".";
         }
         InitializeCriticalSection(&g_logLock);
+        InitializeCriticalSection(&g_hubLock);
         g_logLockReady = true;
+        g_hubLockReady = true;
         HANDLE thread = CreateThread(nullptr, 0, Start, nullptr, 0, nullptr);
         if (thread) CloseHandle(thread);
     }

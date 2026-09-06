@@ -50,12 +50,12 @@ PROVIDERS: tuple[ProviderPreset, ...] = (
     ),
     ProviderPreset(
         ProviderId.SILICONFLOW_HUNYUAN,
-        "SiliconFlow · Hunyuan-MT",
+        "SiliconFlow",
         "https://api.siliconflow.cn/v1",
         "tencent/Hunyuan-MT-7B",
         "hunyuan-mt",
         False,
-        "专用机器翻译模型，作为实验性选项保留。",
+        "SiliconFlow 平台。默认模型为 Hunyuan-MT，可改成该平台上的其他模型。",
     ),
     ProviderPreset(
         ProviderId.OPENAI_COMPATIBLE,

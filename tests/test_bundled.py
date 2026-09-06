@@ -59,14 +59,21 @@ class BundledOriginTests(unittest.TestCase):
             self.assertEqual(launched.read_bytes(), b"v2-changed")
             self.assertEqual((runtime / "user").read_bytes(), b"local-marker")
 
-    def test_official_mode_uses_selected_path(self) -> None:
+    def test_legacy_official_mode_uses_bundled_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            origin = Path(directory) / "origin"
+            runtime = Path(directory) / "runtime"
+            origin.mkdir()
+            (origin / "RenpyThief.exe").write_bytes(b"bundled")
             selected = Path(directory) / "RenpyThief.exe"
             selected.write_bytes(b"official")
             settings = AppSettings(translator_path=str(selected), mode="official")
-            self.assertEqual(
-                resolve_launch_translator(settings), selected.resolve()
+            settings.normalize()
+            self.assertEqual(settings.mode, "custom")
+            launched = resolve_launch_translator(
+                settings, origin_dir=origin, runtime_dir=runtime
             )
+            self.assertEqual(launched, (runtime / "RenpyThief.exe").resolve())
 
     def test_custom_mode_requires_origin_exe(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

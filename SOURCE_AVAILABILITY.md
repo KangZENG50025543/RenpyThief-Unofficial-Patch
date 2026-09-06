@@ -9,9 +9,13 @@
 源码归档和二进制文件必须使用相同版本号；该标签必须包含生成发布包所需的
 Python、PowerShell、C/C++ 源码、构建脚本和锁定依赖清单。
 
+安装版和便携版可以附带干净的 RenpyThief 6.7.8（`6.7.8Origin`），方便「我的 API」
+启动。该原版程序不属于本项目开源范围，不按 GPL 授权，也不进入 Git 标签；
+标签里只有 `6.7.8Origin/README.txt`。
+
 ## 主要第三方源码
 
-当前 `v1.0.4.0` 构建基线如下；依赖版本相对 `v0.1.2` 未发生变化：
+当前 `v1.1.0` 构建基线如下；依赖版本相对 `v0.1.2` 未发生变化：
 
 | 组件 | 版本 | 锁定源码归档 | 摘要依据 |
 |---|---:|---|---|
@@ -27,23 +31,23 @@ Python、PowerShell、C/C++ 源码、构建脚本和锁定依赖清单。
 其余 Python 组件的精确版本见 `DEPENDENCIES.txt`（源码仓库中为
 `requirements-lock.txt`），实际许可证文本见 `licenses/`。
 
-## 生成 v1.0.3 源码附件
+## 生成 v1.1.0 源码附件
 
 在仓库根目录运行：
 
 ```powershell
 # 只解析清单、核对锁定版本并显示下载计划；不联网、不写文件
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
-  -Version 1.0.3 -OutputDirectory .\release\source-assets-v1.0.3 -DryRun
+  -Version 1.1.0 -OutputDirectory .\release\source-assets-v1.1.0 -DryRun
 
 # 下载四个精确归档并逐个限制大小、校验 SHA-256
-# v1.0.3 发布目录为 release\source-assets-v1.0.3，总下载量约 582 MiB，Qt 占绝大部分
+# v1.1.0 清单散列与 v0.1.2 相同，优先复用已校验副本做 -VerifyOnly，不要重传 Qt
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
-  -Version 1.0.3 -OutputDirectory .\release\source-assets-v1.0.3
+  -Version 1.1.0 -OutputDirectory .\release\source-assets-v1.1.0
 
 # 上传前再次进行纯本地校验
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare_release_sources.ps1 `
-  -Version 1.0.3 -OutputDirectory .\release\source-assets-v1.0.3 -VerifyOnly
+  -Version 1.1.0 -OutputDirectory .\release\source-assets-v1.1.0 -VerifyOnly
 ```
 
 下载脚本具有以下门禁：

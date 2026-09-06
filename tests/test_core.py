@@ -16,7 +16,6 @@ sys.path.insert(0, str(PROJECT_DIR / "src"))
 from renpy_patch.launcher import (  # noqa: E402
     LaunchEventKind,
     PatchLauncher,
-    _GuardedLaunch,
     _custom_bridge_environment,
     _is_blocked_child_environment_name,
     _launch_guarded_translator,
@@ -59,7 +58,7 @@ class SettingsTests(unittest.TestCase):
                 "cache_mebibytes": -1,
             }
         )
-        self.assertEqual(settings.mode, "official")
+        self.assertEqual(settings.mode, "custom")
         self.assertEqual(settings.provider, ProviderId.DEEPSEEK.value)
         self.assertEqual(settings.quality, QualityMode.FAST.value)
         self.assertEqual(settings.prompt_mode, PromptMode.TEMPLATE1.value)
@@ -428,32 +427,42 @@ class GuardedLauncherTests(unittest.TestCase):
         process.terminate.assert_not_called()
         process.close.assert_called_once_with()
 
-    def test_official_warning_does_not_stop_launch(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            translator = Path(directory) / "RenpyThief.exe"
-            translator.write_bytes(b"test")
-            settings = AppSettings(translator_path=str(translator), mode="official")
-            events = []
-            process = mock.Mock(pid=4321)
-            process.poll.return_value = None
-            guarded = _GuardedLaunch(process, "更新保护状态尚未确认。")
-            launcher = PatchLauncher(events.append)
-            with (
-                mock.patch("renpy_patch.launcher._has_existing_translator", return_value=False),
-                mock.patch(
-                    "renpy_patch.launcher._launch_guarded_translator",
-                    return_value=guarded,
-                ),
-                mock.patch("renpy_patch.launcher.threading.Thread") as thread_type,
-            ):
-                launcher.start(settings)
+    def test_legacy_official_settings_start_custom_route(self) -> None:
+        settings = AppSettings(mode="official")
+        settings.normalize()
+        self.assertEqual(settings.mode, "custom")
+        events = []
+        launcher = PatchLauncher(events.append)
+        process = mock.Mock(pid=99, stdout=io.BytesIO(b""))
+        process.poll.return_value = None
+        with (
+            mock.patch("renpy_patch.launcher._has_existing_translator", return_value=False),
+            mock.patch(
+                "renpy_patch.launcher.resolve_launch_translator",
+                return_value=Path("C:/bundled/RenpyThief.exe"),
+            ),
+            mock.patch(
+                "renpy_patch.launcher.build_custom_command",
+                return_value=[
+                    "pwsh",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    "router/start_routed_translator.ps1",
+                ],
+            ),
+            mock.patch(
+                "renpy_patch.launcher._custom_bridge_environment",
+                return_value={},
+            ),
+            mock.patch("renpy_patch.launcher.subprocess.Popen", return_value=process),
+            mock.patch("renpy_patch.launcher.threading.Thread") as thread_type,
+        ):
+            launcher.start(settings)
 
-        self.assertEqual(
-            [event.kind for event in events],
-            [LaunchEventKind.STARTING, LaunchEventKind.WARNING],
-        )
+        self.assertEqual(events[0].kind, LaunchEventKind.STARTING)
         self.assertTrue(launcher.running)
-        self.assertEqual(launcher.translator_pid, 4321)
         thread_type.return_value.start.assert_called_once_with()
 
     def test_custom_warning_is_followed_by_ready(self) -> None:
@@ -494,6 +503,29 @@ class GuardedLauncherTests(unittest.TestCase):
         self.assertIn("StartsWith('QML')", script)
         self.assertIn("StartsWith('QTWEBENGINE')", script)
         self.assertIn("$upper -eq 'QTDIR'", script)
+
+    def test_powershell_strictmode_initializes_exit_code_and_script_flag(self) -> None:
+        script = (
+            PROJECT_DIR / "router" / "start_routed_translator.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("$global:LASTEXITCODE = 0", script)
+        self.assertIn("function Test-RenpyScriptBridgeEnabled", script)
+        self.assertIn("function Test-FirstHopHijackEnabled", script)
+        self.assertIn("function New-RoutedBridgeArgumentList", script)
+        self.assertNotIn("$Mode = Get-DumpOnlyBridgeMode", script)
+        self.assertNotIn("function Get-DumpOnlyBridgeMode", script)
+        self.assertNotIn("function New-DumpOnlyBridgeArgumentList", script)
+        self.assertIn("using Python translate_bridge.py", script)
+        self.assertIn("function Resolve-DumpOnlyPython", script)
+        self.assertIn("-BridgeMode $Mode", script)
+        self.assertIn("[string]$Mode = 'openai'", script)
+        self.assertNotIn("[string]$Mode = 'echo'", script)
+        self.assertNotIn("$script:EnableRenpyScriptBridge", script)
+        self.assertNotIn("$script:bridgeProcess", script)
+        self.assertNotIn("$injectExitCode = $LASTEXITCODE", script)
+        self.assertIn("$injectExitCode = $global:LASTEXITCODE", script)
+        self.assertIn("if (Test-FirstHopHijackEnabled)", script)
+        self.assertIn("Write-StrictModeFailure", script)
 
 
 class ChildEnvironmentSanitizationTests(unittest.TestCase):
@@ -594,6 +626,10 @@ class LauncherCommandTests(unittest.TestCase):
                 str(runtime.resolve()),
             )
             self.assertEqual(command[command.index("-BlockUpdates") + 1], "true")
+            self.assertEqual(command[command.index("-Mode") + 1], "openai")
+            self.assertEqual(
+                command[command.index("-PayloadProfile") + 1], "deepseek"
+            )
             self.assertNotIn("UPSTREAM_API_KEY", " ".join(command))
             self.assertNotIn("sk-", " ".join(command))
 

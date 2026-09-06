@@ -48,6 +48,13 @@ from .bundled import bundled_origin_exe, bundled_origin_is_present
 from .settings import SettingsStore, app_data_directory, find_router_script
 
 
+class NoWheelComboBox(QComboBox):
+    """Ignore wheel so scrolling the form cannot change the current item."""
+
+    def wheelEvent(self, event) -> None:  # type: ignore[override]
+        event.ignore()
+
+
 class UiSignals(QObject):
     launch_event = pyqtSignal(object)
     api_test_finished = pyqtSignal(object, object)
@@ -92,7 +99,7 @@ class MainWindow(QMainWindow):
         self._load_settings_into_ui()
         self._loading = False
         self._update_mode_ui()
-        self._set_status("idle", "未启动", "请选择翻译来源，然后启动 RenpyThief。")
+        self._set_status("idle", "未启动", "请填写 API，然后启动 RenpyThief。")
 
     def _build_ui(self) -> None:
         scroll = QScrollArea(self)
@@ -135,9 +142,7 @@ class MainWindow(QMainWindow):
         path_group = QGroupBox("原版程序")
         path_layout = QHBoxLayout(path_group)
         self.translator_path = QLineEdit()
-        self.translator_path.setPlaceholderText(
-            "官方额度请选择你自己的 RenpyThief.exe"
-        )
+        self.translator_path.setPlaceholderText("内置干净 RenpyThief 6.7.8")
         self.browse_button = QPushButton("浏览…")
         self.browse_button.clicked.connect(self._browse_translator)
         path_layout.addWidget(self.translator_path, 1)
@@ -146,32 +151,32 @@ class MainWindow(QMainWindow):
 
         mode_group = QGroupBox("翻译来源")
         mode_layout = QGridLayout(mode_group)
-        self.official_radio = QRadioButton("官方免费额度")
         self.custom_radio = QRadioButton("我的 API")
-        self.official_radio.toggled.connect(self._update_mode_ui)
-        self.custom_radio.toggled.connect(self._update_mode_ui)
+        self.custom_radio.setChecked(True)
+        self.custom_radio.setEnabled(False)
         self.mode_help = QLabel("")
         self.mode_help.setObjectName("helpText")
         self.mode_help.setWordWrap(True)
-        mode_layout.addWidget(self.official_radio, 0, 0)
-        mode_layout.addWidget(self.custom_radio, 0, 1)
+        mode_layout.addWidget(self.custom_radio, 0, 0)
         mode_layout.addWidget(self.mode_help, 1, 0, 1, 2)
         root.addWidget(mode_group)
 
         self.api_group = QGroupBox("自定义翻译服务")
         api_layout = QFormLayout(self.api_group)
         api_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.provider_combo = QComboBox()
+        self.provider_combo = NoWheelComboBox()
         for provider in PROVIDERS:
             self.provider_combo.addItem(provider.label, provider.provider_id.value)
         self.provider_combo.currentIndexChanged.connect(self._provider_changed)
         self.provider_description = QLabel("")
         self.provider_description.setObjectName("helpText")
         self.provider_description.setWordWrap(True)
+        self.base_url_label = QLabel("API Base URL")
+        self.base_url_edit = QLineEdit()
         self.model_label = QLabel("模型")
         self.model_edit = QLineEdit()
         self.quality_label = QLabel("质量")
-        self.quality_combo = QComboBox()
+        self.quality_combo = NoWheelComboBox()
         self.quality_combo.addItem("极速（推荐）", QualityMode.FAST.value)
         self.quality_combo.addItem("高质量（启用思考）", QualityMode.HIGH.value)
         self.credential_labels: list[QLabel] = []
@@ -203,6 +208,7 @@ class MainWindow(QMainWindow):
         self.test_api_button = QPushButton("测试 API")
         self.test_api_button.clicked.connect(self._test_api)
         api_layout.addRow("Provider", self.provider_combo)
+        api_layout.addRow(self.base_url_label, self.base_url_edit)
         api_layout.addRow("", self.provider_description)
         api_layout.addRow(self.model_label, self.model_edit)
         api_layout.addRow(self.quality_label, self.quality_combo)
@@ -215,7 +221,7 @@ class MainWindow(QMainWindow):
         self.prompt_group = QGroupBox("AI 翻译提示词")
         prompt_layout = QFormLayout(self.prompt_group)
         prompt_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.prompt_combo = QComboBox()
+        self.prompt_combo = NoWheelComboBox()
         self.prompt_combo.addItem("模板 1 · 简洁直译", PromptMode.TEMPLATE1.value)
         self.prompt_combo.addItem("模板 2 · 游戏本地化", PromptMode.TEMPLATE2.value)
         self.prompt_combo.addItem("自定义 1", PromptMode.CUSTOM1.value)
@@ -260,13 +266,10 @@ class MainWindow(QMainWindow):
         advanced_outer = QVBoxLayout(self.advanced_group)
         self.advanced_content = QWidget()
         advanced_layout = QFormLayout(self.advanced_content)
-        self.base_url_label = QLabel("API Base URL")
-        self.base_url_edit = QLineEdit()
         self.bridge_concurrency = self._make_spin(1, 128)
         self.upstream_concurrency = self._make_spin(1, 128)
         self.cache_entries = self._make_spin(0, 1_000_000)
         self.cache_mebibytes = self._make_spin(0, 1024, " MiB")
-        advanced_layout.addRow(self.base_url_label, self.base_url_edit)
         advanced_layout.addRow("本地并发", self.bridge_concurrency)
         advanced_layout.addRow("上游并发", self.upstream_concurrency)
         advanced_layout.addRow("内存缓存条目", self.cache_entries)
@@ -283,7 +286,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.advanced_group)
 
         actions = QHBoxLayout()
-        self.start_button = QPushButton("启动原版翻译器")
+        self.start_button = QPushButton("使用我的 API 启动")
         self.start_button.setObjectName("primaryButton")
         self.start_button.clicked.connect(self._start)
         self.stop_button = QPushButton("停止")
@@ -357,8 +360,7 @@ class MainWindow(QMainWindow):
         settings = self.settings
         self._official_translator_path = settings.translator_path
         self.translator_path.setText(settings.translator_path)
-        self.official_radio.setChecked(settings.mode == TranslationMode.OFFICIAL.value)
-        self.custom_radio.setChecked(settings.mode == TranslationMode.CUSTOM.value)
+        self.custom_radio.setChecked(True)
         provider_index = self.provider_combo.findData(settings.provider)
         self.provider_combo.setCurrentIndex(max(0, provider_index))
         self._current_provider_id = str(self.provider_combo.currentData())
@@ -389,16 +391,10 @@ class MainWindow(QMainWindow):
             self._load_saved_credentials(settings.provider)
 
     def _collect_settings(self) -> AppSettings:
-        mode = (
-            TranslationMode.CUSTOM.value
-            if self.custom_radio.isChecked()
-            else TranslationMode.OFFICIAL.value
-        )
+        mode = TranslationMode.CUSTOM.value
         self._store_active_custom_prompt()
-        if mode != TranslationMode.CUSTOM.value:
-            self._official_translator_path = self.translator_path.text().strip()
         value = AppSettings(
-            translator_path=self._official_translator_path,
+            translator_path=self._bundled_translator_path(),
             mode=mode,
             provider=str(self.provider_combo.currentData()),
             base_url=self.base_url_edit.text().strip(),
@@ -428,6 +424,11 @@ class MainWindow(QMainWindow):
                 raise ValueError("自定义提示词不能为空。")
             make_launch_profile(value)
         return value
+
+    def _bundled_translator_path(self) -> str:
+        if bundled_origin_is_present():
+            return str(bundled_origin_exe())
+        return ""
 
     def _browse_translator(self) -> None:
         current = self.translator_path.text().strip()
@@ -475,7 +476,6 @@ class MainWindow(QMainWindow):
             ProviderId.OPENAI_COMPATIBLE,
             ProviderId.LOCAL_OPENAI,
         }:
-            self.advanced_group.setChecked(True)
             self.base_url_edit.setPlaceholderText(
                 "例如 http://127.0.0.1:11434/v1 或 http://127.0.0.1:8080/v1"
             )
@@ -617,54 +617,36 @@ class MainWindow(QMainWindow):
             self.block_updates_checkbox.setChecked(True)
 
     def _apply_translator_path_ui(self) -> None:
-        custom = self.custom_radio.isChecked()
-        running = self.launcher.running
-        if custom:
-            origin = bundled_origin_exe()
-            if bundled_origin_is_present():
-                self.translator_path.setText(str(origin))
-                self.translator_path.setPlaceholderText("内置干净 RenpyThief 6.7.8")
-            else:
-                self.translator_path.setText("")
-                self.translator_path.setPlaceholderText(
-                    "未找到 6.7.8Origin\\RenpyThief.exe"
-                )
-            self.translator_path.setReadOnly(True)
-            self.translator_path.setEnabled(False)
-            self.browse_button.setEnabled(False)
-            return
-        self.translator_path.setReadOnly(False)
-        self.translator_path.setEnabled(not running)
-        self.translator_path.setPlaceholderText(
-            "官方额度请选择你自己的 RenpyThief.exe"
-        )
-        self.translator_path.setText(self._official_translator_path)
-        self.browse_button.setEnabled(not running)
+        origin = bundled_origin_exe()
+        if bundled_origin_is_present():
+            self.translator_path.setText(str(origin))
+            self.translator_path.setPlaceholderText("内置干净 RenpyThief 6.7.8")
+        else:
+            self.translator_path.setText("")
+            self.translator_path.setPlaceholderText(
+                "未找到 6.7.8Origin\\RenpyThief.exe"
+            )
+        self.translator_path.setReadOnly(True)
+        self.translator_path.setEnabled(False)
+        self.browse_button.setEnabled(False)
+        self.browse_button.setVisible(False)
 
     def _update_mode_ui(self) -> None:
         if not hasattr(self, "api_group"):
             return
-        if not self.translator_path.isReadOnly():
-            self._official_translator_path = self.translator_path.text().strip()
-        custom = self.custom_radio.isChecked()
-        self.api_group.setVisible(custom)
-        self.advanced_group.setVisible(custom)
-        self.api_group.setEnabled(custom and not self.launcher.running)
-        self.advanced_group.setEnabled(custom and not self.launcher.running)
+        self.custom_radio.setChecked(True)
+        self.api_group.setVisible(True)
+        self.advanced_group.setVisible(True)
+        self.api_group.setEnabled(not self.launcher.running)
+        self.advanced_group.setEnabled(not self.launcher.running)
         self._update_prompt_ui()
         self._apply_translator_path_ui()
-        if custom:
-            self.mode_help.setText(
-                "「我的 API」自动使用补丁内置的干净 RenpyThief 6.7.8，不读写你电脑上的原版目录。"
-                "翻译请求会转发到你选择的 API（含本机 127.0.0.1 上的 OpenAI 兼容服务），可能产生费用。"
-                "官方会话接口由兼容性保护在进程内应答；只有路由确认后才会提示拖入游戏。"
-            )
-            self.start_button.setText("使用我的 API 启动")
-        else:
-            self.mode_help.setText(
-                "直接启动你选择的原版程序，不运行桥接、不注入路由，也不会读取或使用你的 API Key。"
-            )
-            self.start_button.setText("启动原版翻译器")
+        self.mode_help.setText(
+            "「我的 API」自动使用补丁内置的干净 RenpyThief 6.7.8，不读写你电脑上的原版目录。"
+            "翻译请求会转发到你选择的 API（含本机 127.0.0.1 上的 OpenAI 兼容服务），可能产生费用。"
+            "官方会话接口由兼容性保护在进程内应答；只有路由确认后才会提示拖入游戏。"
+        )
+        self.start_button.setText("使用我的 API 启动")
 
     def _save_credentials(
         self, settings: AppSettings, values: dict[str, str]
@@ -682,10 +664,8 @@ class MainWindow(QMainWindow):
     def _start(self) -> None:
         try:
             settings = self._collect_settings()
-            credentials: dict[str, str] = {}
-            if settings.mode == TranslationMode.CUSTOM.value:
-                credentials = self._collect_credentials()
-                self._save_credentials(settings, credentials)
+            credentials = self._collect_credentials()
+            self._save_credentials(settings, credentials)
             self.settings_store.save(settings)
             self.settings = settings
             self.launcher.start(settings, credentials)
@@ -750,8 +730,7 @@ class MainWindow(QMainWindow):
             self._set_status("starting", "正在启动", event.message)
             self._set_controls_running(True)
         elif event.kind is LaunchEventKind.READY:
-            active = "官方额度" if self.official_radio.isChecked() else "我的 API"
-            self._set_status("ready", f"{active} · 已就绪", event.message)
+            self._set_status("ready", "我的 API · 已就绪", event.message)
         elif event.kind is LaunchEventKind.WARNING:
             self._set_status("warning", "更新保护未确认", event.message)
             QMessageBox.warning(self, "更新保护未确认", event.message)
@@ -772,12 +751,10 @@ class MainWindow(QMainWindow):
     def _set_controls_running(self, running: bool) -> None:
         self.start_button.setEnabled(not running)
         self.stop_button.setEnabled(running)
-        self.official_radio.setEnabled(not running)
-        self.custom_radio.setEnabled(not running)
         self._apply_translator_path_ui()
-        self.api_group.setEnabled(not running and self.custom_radio.isChecked())
-        self.advanced_group.setEnabled(not running and self.custom_radio.isChecked())
-        self.prompt_group.setEnabled(not running and self.custom_radio.isChecked())
+        self.api_group.setEnabled(not running)
+        self.advanced_group.setEnabled(not running)
+        self.prompt_group.setEnabled(not running)
         self.block_updates_checkbox.setEnabled(not running)
         provider = get_provider(str(self.provider_combo.currentData()))
         self.test_api_button.setEnabled(

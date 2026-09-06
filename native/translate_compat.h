@@ -32,3 +32,24 @@ inline std::string OfficialTranslateBridgeUrl(
         fragment == std::string::npos ? std::string::npos : fragment - query);
     return local;
 }
+
+inline std::string AppendOfficialTranslateHubQuery(
+    const std::string& localUrl, const std::string& encodedFrom,
+    const std::string& encodedTo, const std::string& encodedText)
+{
+    std::string local = localUrl;
+    local += local.find('?') == std::string::npos ? '?' : '&';
+    local += "from=";
+    local += encodedFrom;
+    local += "&to=";
+    local += encodedTo;
+    local += "&text=";
+    local += encodedText;
+    return local;
+}
+
+inline bool LooksLikeOfficialTranslateReply(const std::string& json)
+{
+    return json.find("\"isChatGPT\"") != std::string::npos &&
+           json.find("\"remainCharCount\"") != std::string::npos;
+}

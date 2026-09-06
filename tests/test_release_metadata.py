@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1.0.4.0"
+VERSION = "1.1.0"
 PORTABLE_NAME = f"RenpyThiefPatch-v{VERSION}-portable-x64"
 INSTALLER_NAME = f"RenpyThiefPatch-v{VERSION}-setup-x64.exe"
 
@@ -39,7 +39,15 @@ class ReleaseMetadataTests(unittest.TestCase):
         router = (ROOT / "router" / "start_routed_translator.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn("$EnableRenpyScriptBridge = $false", router)
+        self.assertIn("function Test-RenpyScriptBridgeEnabled", router)
+        self.assertIn("function Test-FirstHopHijackEnabled", router)
+        self.assertIn("function New-RoutedBridgeArgumentList", router)
+        self.assertIn("return $false", router)
+        self.assertIn("using Python translate_bridge.py", router)
+        self.assertIn("function Resolve-DumpOnlyPython", router)
+        self.assertIn("'translate_bridge.py'", source)
+        self.assertIn("--no-log-content", router)
+        self.assertNotIn("'--log-content'", router)
         self.assertIn("packaging\\QUICK_START.txt", source)
         self.assertIn("$localizedLauncherName", source)
         codepoints = re.findall(r"\[char\]0x([0-9A-Fa-f]{4})", source)

@@ -899,8 +899,12 @@ class TranslationCacheTests(unittest.TestCase):
         translator = make_translator("siliconflow-qwen")
         translator.mode = "echo"
         with mock.patch.object(translator, "_request_upstream") as upstream:
-            self.assertEqual(translator.translate("echo", "ja", "zh"), "echo")
-            self.assertEqual(translator.translate("echo", "ja", "zh"), "echo")
+            self.assertEqual(
+                translator.translate("echo", "ja", "zh"), "echo:【echo】"
+            )
+            self.assertEqual(
+                translator.translate("原文", "ja", "zh"), "echo:【原文】"
+            )
         upstream.assert_not_called()
         self.assertEqual(translator._translation_cache, {})
         self.assertEqual(translator._translation_inflight, {})
@@ -979,6 +983,41 @@ class OfficialTranslateBridgeTests(unittest.TestCase):
         self.assertEqual(encrypted.text, "")
         self.assertTrue(encrypted.encrypted)
         self.assertEqual(encrypted.data_chars, 64)
+
+        hub = BRIDGE.extract_official_translate_request(
+            json.dumps(
+                {"data": "A" * 64, "encrypted": True}
+            ).encode("utf-8"),
+            "application/json",
+            {"text": ["hub-plain"], "from": ["auto"], "to": ["zh"]},
+        )
+        self.assertEqual(hub.text, "hub-plain")
+        self.assertTrue(hub.encrypted)
+        self.assertEqual(hub.source, "auto")
+        self.assertEqual(hub.target, "zh-hans")
+
+        query_wins = BRIDGE.extract_official_translate_request(
+            json.dumps(
+                {"text": "from-body", "encrypted": True, "data": "A" * 64}
+            ).encode("utf-8"),
+            "application/json",
+            {"text": ["from-query"]},
+        )
+        self.assertEqual(query_wins.text, "from-query")
+
+        both = BRIDGE.extract_official_translate_request(
+            json.dumps(
+                {
+                    "text": "from-body",
+                    "encrypted": True,
+                    "data": "A" * 64,
+                }
+            ).encode("utf-8"),
+            "application/json",
+            {},
+        )
+        self.assertEqual(both.text, "from-body")
+        self.assertTrue(both.encrypted)
         self.assertEqual(BRIDGE.classify_blob("A" * 64), "hex-like")
         self.assertEqual(BRIDGE.classify_blob("Ab+/" * 16), "base64-like")
 
@@ -1007,7 +1046,7 @@ class OfficialTranslateBridgeTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(body["status"], 200)
             self.assertEqual(body["msg"], "OK")
-            self.assertEqual(body["data"]["text"], "hello")
+            self.assertEqual(body["data"]["text"], "echo:【hello】")
             self.assertFalse(body["data"]["isChatGPT"])
             self.assertIn("remainCharCount", body["data"])
 
@@ -1033,13 +1072,24 @@ class OfficialTranslateBridgeTests(unittest.TestCase):
             self.assertNotIn("text", encrypted_body["data"])
 
             conn.request(
+                "POST",
+                "/official-translate/sendTranslate?from=auto&to=zh&text=hub-plain",
+                body=encrypted_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            hub = conn.getresponse()
+            hub_body = json.loads(hub.read().decode("utf-8"))
+            self.assertEqual(hub.status, 200)
+            self.assertEqual(hub_body["data"]["text"], "echo:【hub-plain】")
+
+            conn.request(
                 "GET",
                 "/official-translate/sendMenuTranslate?text=menu&from=en&to=zh",
             )
             query_response = conn.getresponse()
             query_body = json.loads(query_response.read().decode("utf-8"))
             self.assertEqual(query_response.status, 200)
-            self.assertEqual(query_body["data"]["text"], "menu")
+            self.assertEqual(query_body["data"]["text"], "echo:【menu】")
             conn.close()
         finally:
             server.shutdown()

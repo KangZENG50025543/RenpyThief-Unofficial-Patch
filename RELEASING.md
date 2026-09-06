@@ -2,44 +2,45 @@
 
 本文面向项目维护者。所有 Git 操作都必须在独立的 `UnofficialPatch` 仓库中执行；不要在上级原软件目录或整个 Windows 用户目录中执行。
 
-## 1. v1.0.4.0 发布目标
+## 1. v1.1.0 发布目标
 
-本版本是**测试版**：关掉 Ren'Py 脚本层，验证通用注入器明文路由。正式版仍是 `v1.0.3`。当前提供两个 Windows x64 资产：
+本版本是正式版，用来接替 v1.0.3：启动器只走「我的 API」，由主进程解袋后把台词送到用户自己的 Bridge。游戏窗口和原版翻译仪表盘都能看到回写结果。当前提供两个 Windows x64 资产：
 
-- `RenpyThiefPatch-v1.0.4.0-setup-x64.exe`：测试安装版。
-- `RenpyThiefPatch-v1.0.4.0-portable-x64.zip`：测试便携版；完整解压后运行，不需要安装 Python。
+- `RenpyThiefPatch-v1.1.0-setup-x64.exe`：安装版。
+- `RenpyThiefPatch-v1.1.0-portable-x64.zip`：便携版；完整解压后运行，不需要安装 Python。
 
-两者必须由同一提交构建、功能一致。若打 GitHub Release，标签 `v1.0.4.0` 必须勾选 Pre-release。不得把游戏文件、用户凭据或分析资料打进任何资产。内置干净 6.7.8 只能来自仓库旁的 `6.7.8Origin`（不含 `user` / `hwid` / API 文件），原版程序文件不要提交进 Git。
+两者必须由同一提交构建、功能一致。GitHub Release 标题使用正式版文案，不要勾选 Pre-release。内置干净 6.7.8 来自仓库旁的 `6.7.8Origin`。
 
 ## 2. 发布前准备
 
-- 确认版本号、README、包内 `QUICK_START.txt`、安装器显示和文件名均为 `1.0.4.0`。Windows 文件版本已经是四段，不要再拼成 `1.0.4.0.0`。
+- 确认版本号、README、包内 `QUICK_START.txt`、安装器显示和文件名均为 `1.1.0`。Windows 文件版本由三段补成 `1.1.0.0`，不要再拼成 `1.1.0.0.0`。
 - 确认项目仍采用 `GPL-3.0-only`，根目录 `LICENSE`、`COPYRIGHT` 和 `THIRD_PARTY_NOTICES.md` 完整存在。
 - 按 `SOURCE_AVAILABILITY.md` 确认标签公开完整补丁源码。第三方锁定源码若与上一发布基线散列相同，引用该基线 Release，不要重复上传。
 - 使用干净的 Python 3.12 虚拟环境安装 `requirements-lock.txt`，编译并测试 `native\` 中的 x86 组件。
 - 确认 README 声明的 RenpyThief 支持范围与实际测试一致。
-- 确认 Git 仓库中没有 API Key、用户数据、原版程序、游戏文件、PDB、抓包、分析日志或游戏正文日志。安装版和便携版可以包含 `6.7.8Origin` 中的干净 6.7.8，但不得包含 `user`、`hwid` 或 API 密钥。
+- 安装版和便携版可以包含 `6.7.8Origin` 中的干净 6.7.8。
 - 确认 Release 首屏把安装版、便携版、第三方对应源码和 GitHub 自动生成的源码包区分清楚。
-- 确认发布包含 `router\00unofficial_bridge.rpy`，启动脚本会在拖入 Ren'Py 游戏后写入其 `game\` 目录。
+- 确认发布包含 `router\00unofficial_bridge.rpy` 文件，但启动脚本**不会**把它写入游戏；拖入 Ren'Py 游戏时若发现旧文件会删除。
+- 确认发布包含 `router\translate_bridge.py`。启动脚本在本机有 Python 时优先用该脚本，否则回退到打包的 `translate_bridge.exe`。
 
 ## 3. 构建发布资产
 
 构建虚拟环境必须位于纯英文路径；项目源码目录可以包含中文：
 
 ```powershell
-$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.3'
+$buildVenv = Join-Path $env:LOCALAPPDATA 'RenpyPatchBuild\venv-1.0.2'
 python -m venv $buildVenv
 & "$buildVenv\Scripts\python.exe" -m pip install -r .\requirements-lock.txt
-.\build_release.ps1 -Version 1.0.4.0 -Python "$buildVenv\Scripts\python.exe" `
-  -PublicRelease -IsccPath 'C:\path\to\Inno Setup 6\ISCC.exe'
+.\build_release.ps1 -Version 1.1.0 -Python "$buildVenv\Scripts\python.exe" `
+  -PublicRelease -IsccPath "$env:LOCALAPPDATA\RenpyPatchBuild\tools\InnoSetup-6.7.3\ISCC.exe"
 ```
 
 应生成或准备好：
 
 ```text
-release\RenpyThiefPatch-v1.0.4.0-portable-x64\
-release\RenpyThiefPatch-v1.0.4.0-portable-x64.zip
-release\RenpyThiefPatch-v1.0.4.0-setup-x64.exe
+release\RenpyThiefPatch-v1.1.0-portable-x64\
+release\RenpyThiefPatch-v1.1.0-portable-x64.zip
+release\RenpyThiefPatch-v1.1.0-setup-x64.exe
 release\SHA256SUMS.txt
 ```
 
@@ -53,6 +54,7 @@ release\SHA256SUMS.txt
 - `LaunchPatch.cmd`
 - `QUICK_START.txt`
 - `router\translate_bridge.exe`
+- `router\translate_bridge.py`
 - `router\ipcroute.dll`
 - `router\netinject.exe`
 - `router\guardlaunch.exe`
@@ -68,19 +70,20 @@ release\SHA256SUMS.txt
 先测试便携版：
 
 ```powershell
-.\release\RenpyThiefPatch-v1.0.4.0-portable-x64\RenpyThiefPatch.exe --smoke-test
-.\release\RenpyThiefPatch-v1.0.4.0-portable-x64\router\translate_bridge.exe --help
+.\release\RenpyThiefPatch-v1.1.0-portable-x64\RenpyThiefPatch.exe --smoke-test
+.\release\RenpyThiefPatch-v1.1.0-portable-x64\router\translate_bridge.exe --help
 ```
 
 上面的 `build_release.ps1 -PublicRelease` 已经使用 Inno Setup 6.7.3 构建安装器。仅在调试安装器或便携目录未变化时，才单独运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1 `
-  -SourceDirectory .\release\RenpyThiefPatch-v1.0.4.0-portable-x64 `
-  -OutputDirectory .\release
+  -SourceDirectory .\release\RenpyThiefPatch-v1.1.0-portable-x64 `
+  -OutputDirectory .\release `
+  -IsccPath "$env:LOCALAPPDATA\RenpyPatchBuild\tools\InnoSetup-6.7.3\ISCC.exe"
 ```
 
-安装器定义会在编译期严格检查 Inno Setup Compiler（ISCC）版本必须为 6.7.3；若未安装在自动检测路径，须用 `-IsccPath 'D:\path\to\ISCC.exe'` 显式指定。
+安装器定义会在编译期严格检查 Inno Setup Compiler（ISCC）版本必须为 6.7.3；若未安装在自动检测路径，须用 `-IsccPath` 显式指定。
 
 再在干净的 Windows 用户环境或虚拟机中测试安装器：
 
@@ -88,14 +91,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps
 2. 确认桌面快捷方式默认勾选且可以取消。
 3. 从快捷方式启动并完成 GUI 冒烟测试。
 4. 从 Windows“已安装的应用”执行卸载，确认只移除本项目安装文件和 `6.7.8Runtime` 工作副本，不删除用户自己的原版 RenpyThief 或其他程序凭据。
-5. 测试覆盖安装/升级路径。官方额度仍须用户浏览自己的原版；「我的 API」使用包内 `6.7.8Origin`，不得读写用户已有原版目录。
+5. 测试覆盖安装/升级路径。启动器只走「我的 API」，使用包内 `6.7.8Origin`，不得读写用户已有原版目录。官方额度请用户自己运行原版程序。
 6. Ren'Py 游戏拖入后选择「使用内嵌样式」，确认台词走用户 API。
 
 运行统一发布门禁，并核对其同时验证安装器和便携包：
 
 ```powershell
 .\scripts\preflight_release.ps1 `
-  -Version 1.0.4.0 `
+  -Version 1.1.0 `
   -Python "$buildVenv\Scripts\python.exe"
 ```
 
@@ -103,36 +106,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_installer.ps
 
 ## 5. 提交、标签与 GitHub Release
 
-测试版先提交到 `release/v1.0.4.0`。确认 CI 通过后，再检查和标记该提交：
+先提交到 `release/v1.1.0`。确认 CI 通过后，再检查和标记该提交：
 
 ```powershell
 git status --short
 git diff --check
 git log -1 --show-signature
-git tag -a v1.0.4.0 -m "v1.0.4.0"
-git push origin v1.0.4.0
+git tag -a v1.1.0 -m "v1.1.0"
+git push origin v1.1.0
 ```
 
 不要覆盖、移动或重新使用已经发布的标签。若标签后发现构建错误，应修复后使用新版本号。
 
 在 GitHub Release 页面：
 
-1. 选择标签 `v1.0.4.0`，标题填写 `v1.0.4.0 — 测试版：关掉 Ren'Py 脚本层，试通用注入器明文路由`。
+1. 选择标签 `v1.1.0`，标题填写 `v1.1.0 — 重要更新：主进程解袋回写，覆盖 v1.0.3`。
 2. 以 `RELEASE_NOTES.md` 为说明；确认折叠前即可看到“普通用户请下载这里”和两个准确文件名。
 3. 上传安装器、便携 ZIP、`SHA256SUMS.txt`。第三方源码散列未变时只上传 `THIRD_PARTY_SOURCE_REFERENCE.txt`，指向 v0.1.2；不要再传 Qt/PyQt5/MinHook/Python 归档。
-4. 测试版必须勾选 **Pre-release**。
+4. 正式版不要勾选 **Pre-release**。
 5. 发布前检查附件名、大小和散列，尤其不能把本机已登录的 RenpyThief、用户 API 凭据或内部 ZIP 误传。
 
 GitHub CLI 示例：
 
 ```powershell
-gh release create v1.0.4.0 `
-  .\release\RenpyThiefPatch-v1.0.4.0-setup-x64.exe `
-  .\release\RenpyThiefPatch-v1.0.4.0-portable-x64.zip `
+gh release create v1.1.0 `
+  .\release\RenpyThiefPatch-v1.1.0-setup-x64.exe `
+  .\release\RenpyThiefPatch-v1.1.0-portable-x64.zip `
   .\release\SHA256SUMS.txt `
   .\release\THIRD_PARTY_SOURCE_REFERENCE.txt `
-  --prerelease `
-  --title "v1.0.4.0 — 测试版：关掉 Ren'Py 脚本层，试通用注入器明文路由" `
+  --title "v1.1.0 — 重要更新：主进程解袋回写，覆盖 v1.0.3" `
   --notes-file .\RELEASE_NOTES.md
 ```
 
