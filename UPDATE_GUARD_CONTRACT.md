@@ -41,9 +41,9 @@ DLL 注入失败、`hook_ready` 失败、钩子运行期失败、等待 API 失�
 
 `version_endpoint_test.exe` 覆盖端口、查询参数、大小写和相邻接口的正反例；RenpyThief 6.7.8 已完成真实启动测试，并确认日志最终出现 `state=blocked_check`。
 
-## 自定义 API 下的会话与配置兼容
+## 启动链中的会话与配置兼容
 
-「我的 API」启动链会把 `versionguard.dll` 复制到隔离 runtime，并写入：
+启动链会把 `versionguard.dll` 复制到隔离 runtime，并写入：
 
 ```ini
 [versionguard]
@@ -54,7 +54,7 @@ config_compat=deny
 translate_compat=lock
 ```
 
-仓库内默认 ini 仍是 `session_compat=observe`、`config_compat=pass`、`translate_compat=pass`，只保护版本检查。启动器不再提供官方额度模式，因此这条默认配置不会被启动器启用。
+仓库内默认 ini 仍是 `session_compat=observe`、`config_compat=pass`、`translate_compat=pass`，只保护版本检查。启动器只走用户自己的 API，因此这条默认配置不会被启用。
 
 `session_compat=lock` 时，下列官方接口在 Qt `QNetworkAccessManager` 层被替换为本地 `data:` JSON，不把请求发到 `api.renpy.fun`：
 
@@ -66,11 +66,11 @@ translate_compat=lock
 
 合成 JSON 只使用固定字段名和本地 EXE 文件版本；若原版目录存在非空 `user` 文件，仅读取 `username=` 且必须是安全 ASCII token。日志只写 `username_present=true/false`，不写用户名、口令或 Cookie。
 
-`session_compat=lock` 时，`guardlaunch` 若发现原版目录中的 `user` **不存在或大小为 0**，会在启动前写入一份仅用于本机的会话标记，让全新安装也能通过原版拖入闸门。已有非空 `user` 文件不会被覆盖；官方额度模式（`session_compat=observe`）不会写入。该标记不是官方账号，不能用来领取官方额度。
+`session_compat=lock` 时，`guardlaunch` 若发现原版目录中的 `user` **不存在或大小为 0**，会在启动前写入一份仅用于本机的会话标记，让全新安装也能通过原版拖入闸门。已有非空 `user` 文件不会被覆盖；`session_compat=observe` 时不会写入。该标记不是官方账号。
 
 `config_compat=deny` 时，已知游戏配置/补齐接口（如 `getGameConfig`、`getUnityHook`、`getV8`）在同一钩子内失败关闭，避免官方配置下载。未知官方路径保持透传，不做猜测。
 
-`translate_compat=lock` 时，`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 不再发到 `api.renpy.fun`。同一套 Qt `QNetworkAccessManager` 钩子把请求改写到本机 Bridge 的 `http://127.0.0.1:19899/official-translate/<endpoint>`。封袋前若桌上还带 `text` + `translateType`，versionguard 只抽出这份明文，附到本机 URL 的 `text=`。`v1.1.0` 的 Bridge 读取 URL `text=`，调用用户 API，按官方信封 `{status,msg,data.text}` 回写译文。URL 上的 `text=` 优先于 POST 密文。只有密文、没有明文时仍 400。默认 Bridge 日志不记正文；`versionguard.log` 仍可能记下短台词片段（去程 `hub_plaintext` / `hub_reroute`，回程 `hub_inbound`），都不写官方 password / username。启动器不再提供官方额度模式；`translate_compat=pass` 仍可把这三条接口透传给官方，但不由本启动器启用。
+`translate_compat=lock` 时，`sendTranslate` / `sendMenuTranslate` / `sendOCRTranslate` 不再发到 `api.renpy.fun`。同一套 Qt `QNetworkAccessManager` 钩子把请求改写到本机 Bridge 的 `http://127.0.0.1:19899/official-translate/<endpoint>`。封袋前若桌上还带 `text` + `translateType`，versionguard 只抽出这份明文，附到本机 URL 的 `text=`。`v1.1.0` 的 Bridge 读取 URL `text=`，调用用户 API，按官方信封 `{status,msg,data.text}` 回写译文。URL 上的 `text=` 优先于 POST 密文。只有密文、没有明文时仍 400。默认 Bridge 日志不记正文；`versionguard.log` 仍可能记下短台词片段（去程 `hub_plaintext` / `hub_reroute`，回程 `hub_inbound`），都不写官方 password / username。启动器只走用户 API；`translate_compat=pass` 仍可把这三条接口透传给官方，但不由本启动器启用。
 
 `v1.1.0` 默认不注入 `ipcroute` / `injectroute`：第一跳密文回到主进程，由它解出桌上的 `text` + `translateType`。`Test-FirstHopHijackEnabled` 为 false 时不要提前截走三连口。脚本层继续关闭，不写 `00unofficial_bridge.rpy`。
 

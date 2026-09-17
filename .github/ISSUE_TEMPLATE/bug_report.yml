@@ -49,12 +49,10 @@ body:
   - type: dropdown
     id: mode
     attributes:
-      label: 翻译线路
+      label: 翻译平台
       options:
-        - 官方免费额度
         - 我的 API
-        - 两种线路都会发生
-        - 与翻译线路无关
+        - 与翻译无关
     validations:
       required: true
 
