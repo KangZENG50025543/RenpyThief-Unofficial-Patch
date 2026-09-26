@@ -11,7 +11,7 @@ pefile==2024.8.26
 pyinstaller==6.22.0
 pyinstaller-hooks-contrib==2026.6
 PyQt5==5.15.11
-PyQt5-Qt5==5.15.2
+PyQt5-Qt5==5.15.19
 PyQt5_sip==12.19.0
 pywin32-ctypes==0.2.3
 setuptools==84.0.0
